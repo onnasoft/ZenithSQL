@@ -2,11 +2,13 @@ package transport
 
 import (
 	"encoding/binary"
-	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/onnasoft/sql-parser/protocol"
 )
+
+const MessageHeaderSize = 24
 
 type MessageHeader struct {
 	MessageID   [16]byte
@@ -15,20 +17,20 @@ type MessageHeader struct {
 }
 
 func (h *MessageHeader) ToBytes() []byte {
-	bytes := make([]byte, 24)
+	bytes := make([]byte, MessageHeaderSize)
 	copy(bytes[:16], h.MessageID[:])
 	binary.BigEndian.PutUint32(bytes[16:20], uint32(h.MessageType))
-	binary.BigEndian.PutUint32(bytes[20:24], h.BodySize)
+	binary.BigEndian.PutUint32(bytes[20:MessageHeaderSize], h.BodySize)
 	return bytes
 }
 
 func (h *MessageHeader) FromBytes(bytes []byte) error {
-	if len(bytes) != 24 {
-		return errors.New("header size must be 24 bytes")
+	if len(bytes) != MessageHeaderSize {
+		return fmt.Errorf("header size must be %v bytes", MessageHeaderSize)
 	}
 	copy(h.MessageID[:], bytes[:16])
 	h.MessageType = protocol.MessageType(binary.BigEndian.Uint32(bytes[16:20]))
-	h.BodySize = binary.BigEndian.Uint32(bytes[20:24])
+	h.BodySize = binary.BigEndian.Uint32(bytes[20:MessageHeaderSize])
 	return nil
 }
 
