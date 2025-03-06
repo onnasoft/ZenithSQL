@@ -1,4 +1,4 @@
-module github.com/OnnaSoft/sql-parser
+module github.com/onnasoft/sql-parser
 
 go 1.24.0
 

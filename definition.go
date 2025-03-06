@@ -1,7 +1,7 @@
 package sqlparser
 
 import (
-	"github.com/OnnaSoft/sql-parser/protocol"
+	"github.com/onnasoft/sql-parser/protocol"
 )
 
 type Statement interface {

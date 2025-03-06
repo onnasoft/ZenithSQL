@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/OnnaSoft/sql-parser/protocol"
+	"github.com/onnasoft/sql-parser/protocol"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
