@@ -10,18 +10,18 @@ import (
 )
 
 type CreateTableStatement struct {
-	TableName string             `msgpack:"table_name"`
-	Columns   []ColumnDefinition `msgpack:"columns"`
-	Storage   string             `msgpack:"storage"`
+	TableName string             `msgpack:"table_name" json:"table_name"`
+	Columns   []ColumnDefinition `msgpack:"columns" json:"columns"`
+	Storage   string             `msgpack:"storage" json:"storage"`
 }
 
 type ColumnDefinition struct {
-	Name         string `msgpack:"name"`
-	Type         string `msgpack:"type"`
-	Length       int    `msgpack:"length"`
-	PrimaryKey   bool   `msgpack:"primary_key"`
-	Index        bool   `msgpack:"index"`
-	DefaultValue string `msgpack:"default_value"`
+	Name         string `msgpack:"name" json:"name"`
+	Type         string `msgpack:"type" json:"type"`
+	Length       int    `msgpack:"length" json:"length"`
+	PrimaryKey   bool   `msgpack:"primary_key" json:"primary_key"`
+	Index        bool   `msgpack:"index" json:"index"`
+	DefaultValue string `msgpack:"default_value" json:"default_value"`
 }
 
 func (c *CreateTableStatement) Protocol() protocol.MessageType {

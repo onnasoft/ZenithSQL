@@ -1,23 +1,21 @@
 package sqlparser
 
 import (
-	"regexp"
 	"strings"
 
+	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/sql-parser/protocol"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// CreateDatabaseStatement represents a CREATE DATABASE statement
 type CreateDatabaseStatement struct {
-	DatabaseName string `msgpack:"database_name"`
+	DatabaseName string `msgpack:"database_name" json:"database_name" valid:"required,alphanumunderscore"`
 }
 
 func (c *CreateDatabaseStatement) Protocol() protocol.MessageType {
 	return protocol.CreateDatabase
 }
 
-// Serializes the statement into length-prefixed MessagePack bytes
 func (c *CreateDatabaseStatement) ToBytes() ([]byte, error) {
 	msgpackBytes, err := msgpack.Marshal(c)
 	if err != nil {
@@ -58,14 +56,17 @@ func (c *CreateDatabaseStatement) FromBytes(data []byte) error {
 func (p *Parser) parseCreateDatabase(sql string) (*CreateDatabaseStatement, error) {
 	sql = cleanCreateDatabaseSQL(sql)
 
-	databaseName, err := extractDatabaseName(sql)
-	if err != nil {
+	databaseName := strings.TrimSpace(sql)
+	if !govalidator.Matches(databaseName, `^[a-zA-Z_][a-zA-Z0-9_]*$`) {
+		return nil, NewInvalidDatabaseNameError(databaseName)
+	}
+
+	statement := &CreateDatabaseStatement{DatabaseName: databaseName}
+	if _, err := govalidator.ValidateStruct(statement); err != nil {
 		return nil, err
 	}
 
-	return &CreateDatabaseStatement{
-		DatabaseName: databaseName,
-	}, nil
+	return statement, nil
 }
 
 func cleanCreateDatabaseSQL(sql string) string {
@@ -73,18 +74,4 @@ func cleanCreateDatabaseSQL(sql string) string {
 	sql = strings.TrimSpace(sql)
 	sql = strings.TrimSuffix(sql, ";")
 	return sql
-}
-
-func extractDatabaseName(sql string) (string, error) {
-	if sql == "" {
-		return "", NewInvalidCreateDatabaseFormatError()
-	}
-
-	// Check for valid database name (alphanumeric and underscores)
-	isValidName := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`).MatchString
-	if !isValidName(sql) {
-		return "", NewInvalidDatabaseNameError(sql)
-	}
-
-	return sql, nil
 }
