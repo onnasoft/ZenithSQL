@@ -49,6 +49,21 @@ const (
 	UnknownCommand MessageType = 255
 )
 
+var messageTypeNamesLookup = map[string]MessageType{}
+
+func init() {
+	for mt, n := range messageTypeNames {
+		messageTypeNamesLookup[n] = mt
+	}
+}
+
+func GetMessageTypeFromName(name string) MessageType {
+	if mt, ok := messageTypeNamesLookup[name]; ok {
+		return mt
+	}
+	return UnknownCommand
+}
+
 // messageTypeNames maps MessageType values to their string representations.
 var messageTypeNames = map[MessageType]string{
 	// Database Management
