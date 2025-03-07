@@ -1,6 +1,7 @@
 package sqlparser
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/asaskevich/govalidator"
@@ -55,11 +56,9 @@ func (c *CreateDatabaseStatement) FromBytes(data []byte) error {
 
 func (p *Parser) parseCreateDatabase(sql string) (*CreateDatabaseStatement, error) {
 	sql = cleanCreateDatabaseSQL(sql)
-
 	databaseName := strings.TrimSpace(sql)
-	if !govalidator.Matches(databaseName, `^[a-zA-Z_][a-zA-Z0-9_]*$`) {
-		return nil, NewInvalidDatabaseNameError(databaseName)
-	}
+
+	fmt.Println("databaseName", databaseName)
 
 	statement := &CreateDatabaseStatement{DatabaseName: databaseName}
 	if _, err := govalidator.ValidateStruct(statement); err != nil {
