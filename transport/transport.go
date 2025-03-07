@@ -16,7 +16,7 @@ type MessageHeader struct {
 	BodySize    uint32
 }
 
-func (h *MessageHeader) ToBytes() []byte {
+func (h *MessageHeader) Serialize() []byte {
 	bytes := make([]byte, MessageHeaderSize)
 	copy(bytes[:16], h.MessageID[:])
 	binary.BigEndian.PutUint32(bytes[16:20], uint32(h.MessageType))
@@ -24,7 +24,7 @@ func (h *MessageHeader) ToBytes() []byte {
 	return bytes
 }
 
-func (h *MessageHeader) FromBytes(bytes []byte) error {
+func (h *MessageHeader) Deserialize(bytes []byte) error {
 	if len(bytes) != MessageHeaderSize {
 		return fmt.Errorf("header size must be %v bytes", MessageHeaderSize)
 	}
@@ -50,8 +50,8 @@ func NewMessage(messageType protocol.MessageType, body []byte) *Message {
 	}
 }
 
-func (m *Message) ToBytes() []byte {
-	headerBytes := m.Header.ToBytes()
+func (m *Message) Serialize() []byte {
+	headerBytes := m.Header.Serialize()
 	return append(headerBytes, m.Body...)
 }
 
