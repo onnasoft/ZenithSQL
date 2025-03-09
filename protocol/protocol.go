@@ -57,6 +57,10 @@ func init() {
 	}
 }
 
+func GetMessageTypeFromID(id uint32) MessageType {
+	return MessageType(id)
+}
+
 func GetMessageTypeFromName(name string) MessageType {
 	if mt, ok := messageTypeNamesLookup[name]; ok {
 		return mt
