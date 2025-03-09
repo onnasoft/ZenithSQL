@@ -28,7 +28,7 @@ func (c *CreateTableStatement) Protocol() protocol.MessageType {
 	return protocol.CreateTable
 }
 
-func (c *CreateTableStatement) ToBytes() ([]byte, error) {
+func (c *CreateTableStatement) Serialize() ([]byte, error) {
 	msgpackBytes, err := msgpack.Marshal(c)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (c *CreateTableStatement) ToBytes() ([]byte, error) {
 	return prefixedBytes, nil
 }
 
-func (c *CreateTableStatement) FromBytes(data []byte) error {
+func (c *CreateTableStatement) Deserialize(data []byte) error {
 	if len(data) < 4 {
 		return NewInvalidMessagePackDataError()
 	}

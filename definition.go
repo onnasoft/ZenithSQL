@@ -6,6 +6,6 @@ import (
 
 type Statement interface {
 	Protocol() protocol.MessageType
-	ToBytes() ([]byte, error)
-	FromBytes(data []byte) error
+	Serialize() ([]byte, error)
+	Deserialize(data []byte) error
 }

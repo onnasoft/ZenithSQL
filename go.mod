@@ -5,7 +5,7 @@ go 1.24.0
 require github.com/vmihailenco/msgpack/v5 v5.4.1
 
 require (
-	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
+	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
