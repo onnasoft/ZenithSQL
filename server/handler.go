@@ -2,7 +2,6 @@ package managment
 
 import (
 	"encoding/hex"
-	"fmt"
 	"log"
 	"net"
 	"time"
@@ -102,9 +101,6 @@ func (s *TCPServer) SendMessage(conn net.Conn, message *transport.Message) (*tra
 	s.mu.Lock()
 	delete(s.responses, messageId)
 	s.mu.Unlock()
-
-	s.logger.Info(fmt.Sprintf("ID: %v, request: %v\n", messageId, message.Header.MessageType))
-	s.logger.Info(fmt.Sprintf("ID: %v, response: %v\n", messageId, string(response.Body)))
 
 	return response, nil
 }
