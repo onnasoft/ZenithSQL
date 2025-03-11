@@ -77,12 +77,13 @@ func (s *TCPServer) sender() {
 	}
 }
 
-func (s *TCPServer) SendToAll(message *transport.Message) []*transport.Message {
+func (s *TCPServer) SendToAll(message *transport.Message) ([]*transport.Message, []error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var wg sync.WaitGroup
 	responseChan := make(chan *transport.Message, len(s.conns))
+	errorChan := make(chan error, len(s.conns))
 
 	for conn := range s.conns {
 		wg.Add(1)
@@ -90,6 +91,7 @@ func (s *TCPServer) SendToAll(message *transport.Message) []*transport.Message {
 			defer wg.Done()
 			response, err := s.SendMessage(c, message)
 			if err != nil {
+				errorChan <- err
 				s.logger.Error("Error sending message:", err)
 				return
 			}
@@ -99,13 +101,19 @@ func (s *TCPServer) SendToAll(message *transport.Message) []*transport.Message {
 
 	wg.Wait()
 	close(responseChan)
+	close(errorChan)
 
 	responses := make([]*transport.Message, 0, len(s.conns))
 	for response := range responseChan {
 		responses = append(responses, response)
 	}
 
-	return responses
+	errors := make([]error, 0)
+	for err := range errorChan {
+		errors = append(errors, err)
+	}
+
+	return responses, errors
 }
 
 func (s *TCPServer) Stop() error {
