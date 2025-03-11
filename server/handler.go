@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/hex"
-	"log"
 	"net"
 	"time"
 
@@ -15,14 +14,14 @@ func (s *TCPServer) handleConnection(conn net.Conn) {
 	s.conns[conn] = struct{}{}
 	s.mu.Unlock()
 
-	log.Println("New connection:", conn.RemoteAddr())
+	s.logger.Info("New connection:", conn.RemoteAddr())
 
 	go s.reader(conn)
 	go s.alive(conn)
 
 	_, err := s.SendMessage(conn, transport.NewMessage(protocol.Welcome, []byte("Welcome to the server!")))
 	if err != nil {
-		log.Println("Error sending welcome message:", err)
+		s.logger.Error("Error sending welcome message:", err)
 	}
 }
 
@@ -30,7 +29,7 @@ func (s *TCPServer) alive(conn net.Conn) {
 	for {
 		_, err := s.SendMessage(conn, transport.NewMessage(protocol.Ping, []byte("Are you alive?")))
 		if err != nil {
-			log.Println("Error sending alive message:", err)
+			s.logger.Error("Error sending alive message:", err)
 			return
 		}
 
