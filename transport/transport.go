@@ -3,24 +3,37 @@ package transport
 import (
 	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/onnasoft/sql-parser/protocol"
 )
 
-const MessageHeaderSize = 24
+const (
+	StartMarker       uint32 = 0xDEADBEEF
+	EndMarker         uint32 = 0xBEEFDEAD
+	MessageHeaderSize        = 36 // Se aumentó para incluir timestamp y markers
+)
 
 type MessageHeader struct {
+	StartMarker uint32
 	MessageID   [16]byte
 	MessageType protocol.MessageType
+	Timestamp   uint64
 	BodySize    uint32
+	EndMarker   uint32
 }
 
 func (h *MessageHeader) Serialize() []byte {
 	bytes := make([]byte, MessageHeaderSize)
-	copy(bytes[:16], h.MessageID[:])
-	binary.BigEndian.PutUint32(bytes[16:20], uint32(h.MessageType))
-	binary.BigEndian.PutUint32(bytes[20:MessageHeaderSize], h.BodySize)
+
+	binary.BigEndian.PutUint32(bytes[0:4], h.StartMarker)
+	copy(bytes[4:20], h.MessageID[:])
+	binary.BigEndian.PutUint32(bytes[20:24], uint32(h.MessageType))
+	binary.BigEndian.PutUint64(bytes[24:32], h.Timestamp)
+	binary.BigEndian.PutUint32(bytes[32:36], h.BodySize)
+	binary.BigEndian.PutUint32(bytes[36:40], h.EndMarker)
+
 	return bytes
 }
 
@@ -28,9 +41,22 @@ func (h *MessageHeader) Deserialize(bytes []byte) error {
 	if len(bytes) != MessageHeaderSize {
 		return fmt.Errorf("header size must be %v bytes", MessageHeaderSize)
 	}
-	copy(h.MessageID[:], bytes[:16])
-	h.MessageType = protocol.MessageType(binary.BigEndian.Uint32(bytes[16:20]))
-	h.BodySize = binary.BigEndian.Uint32(bytes[20:MessageHeaderSize])
+
+	h.StartMarker = binary.BigEndian.Uint32(bytes[0:4])
+	if h.StartMarker != StartMarker {
+		return fmt.Errorf("invalid start marker: expected 0xDEADBEEF, got 0x%X", h.StartMarker)
+	}
+
+	copy(h.MessageID[:], bytes[4:20])
+	h.MessageType = protocol.MessageType(binary.BigEndian.Uint32(bytes[20:24]))
+	h.Timestamp = binary.BigEndian.Uint64(bytes[24:32])
+	h.BodySize = binary.BigEndian.Uint32(bytes[32:36])
+	h.EndMarker = binary.BigEndian.Uint32(bytes[36:40])
+
+	if h.EndMarker != EndMarker {
+		return fmt.Errorf("invalid end marker: expected 0xBEEFDEAD, got 0x%X", h.EndMarker)
+	}
+
 	return nil
 }
 
@@ -42,9 +68,12 @@ type Message struct {
 func NewMessage(messageType protocol.MessageType, body []byte) *Message {
 	return &Message{
 		Header: MessageHeader{
+			StartMarker: StartMarker,
 			MessageID:   uuid.New(),
 			MessageType: messageType,
+			Timestamp:   uint64(time.Now().UnixNano()),
 			BodySize:    uint32(len(body)),
+			EndMarker:   EndMarker,
 		},
 		Body: body,
 	}
@@ -53,6 +82,23 @@ func NewMessage(messageType protocol.MessageType, body []byte) *Message {
 func (m *Message) Serialize() []byte {
 	headerBytes := m.Header.Serialize()
 	return append(headerBytes, m.Body...)
+}
+
+func (m *Message) Deserialize(bytes []byte) error {
+	if len(bytes) < MessageHeaderSize {
+		return fmt.Errorf("message size too small")
+	}
+
+	if err := m.Header.Deserialize(bytes[:MessageHeaderSize]); err != nil {
+		return err
+	}
+
+	m.Body = bytes[MessageHeaderSize:]
+	if uint32(len(m.Body)) != m.Header.BodySize {
+		return fmt.Errorf("body size mismatch: expected %d, got %d", m.Header.BodySize, len(m.Body))
+	}
+
+	return nil
 }
 
 func (m *Message) OperationType() string {
@@ -68,11 +114,6 @@ func (m *Message) OperationType() string {
 	case protocol.BeginTransaction, protocol.Commit, protocol.Rollback, protocol.Savepoint, protocol.ReleaseSavepoint:
 		return "TCL"
 
-	// Data Control Language (DCL) - Control de permisos (posible expansión)
-	// case protocol.Grant, protocol.Revoke:
-	// 	return "DCL"
-
-	// Utility commands
 	case protocol.Ping, protocol.Pong, protocol.Greeting, protocol.Welcome:
 		return "UTILITY"
 

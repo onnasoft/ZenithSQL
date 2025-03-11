@@ -41,6 +41,13 @@ const (
 	Savepoint        MessageType = 43
 	ReleaseSavepoint MessageType = 44
 
+	// Authentication & User Management
+	Login               MessageType = 50
+	Logout              MessageType = 51
+	RegisterUser        MessageType = 52
+	ChangePassword      MessageType = 53
+	AuthenticateSession MessageType = 54
+
 	// Utility Commands
 	Ping           MessageType = 90
 	Pong           MessageType = 91
@@ -103,6 +110,13 @@ var messageTypeNames = map[MessageType]string{
 	Rollback:         "Rollback",
 	Savepoint:        "Savepoint",
 	ReleaseSavepoint: "ReleaseSavepoint",
+
+	// Authentication & User Management
+	Login:               "Login",
+	Logout:              "Logout",
+	RegisterUser:        "RegisterUser",
+	ChangePassword:      "ChangePassword",
+	AuthenticateSession: "AuthenticateSession",
 
 	// Utility Commands
 	Ping:           "Ping",
