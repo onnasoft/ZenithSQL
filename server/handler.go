@@ -1,4 +1,4 @@
-package managment
+package server
 
 import (
 	"encoding/hex"
