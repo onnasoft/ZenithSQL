@@ -44,7 +44,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		cfg.Logger.Info("TLS enabled")
 	}
 
-	return &MessageServer{
+	svr := &MessageServer{
 		port:           cfg.Port,
 		logger:         cfg.Logger,
 		messageHandler: cfg.Handler,
@@ -54,6 +54,12 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		responseMap:    make(map[string]chan *transport.Message),
 		tlsConfig:      tlsConfig,
 	}
+
+	if cfg.Logger == nil {
+		svr.logger = logrus.New()
+	}
+
+	return svr
 }
 
 func (s *MessageServer) Start() error {
