@@ -102,16 +102,19 @@ func (s *MessageServer) handleIncomingMessages(conn net.Conn) {
 func (s *MessageServer) readMessage(conn net.Conn) (*transport.MessageHeader, []byte, error) {
 	headerBytes := make([]byte, transport.MessageHeaderSize)
 	if _, err := conn.Read(headerBytes); err != nil {
+		s.logger.Error("Error reading header:", err)
 		return nil, nil, err
 	}
 
 	header := &transport.MessageHeader{}
 	if err := header.Deserialize(headerBytes); err != nil {
+		s.logger.Error("Error deserializing header:", err)
 		return nil, nil, err
 	}
 
 	body := make([]byte, header.BodySize)
 	if _, err := conn.Read(body); err != nil {
+		s.logger.Error("Error reading body:", err)
 		return nil, nil, err
 	}
 
