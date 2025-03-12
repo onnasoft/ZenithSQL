@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/onnasoft/sql-parser/statement"
 	"github.com/onnasoft/sql-parser/transport"
 	"github.com/sirupsen/logrus"
 )
@@ -25,7 +26,7 @@ type MessageServer struct {
 	port           int
 	logger         *logrus.Logger
 	messageHandler func(net.Conn, *transport.Message)
-	loginValidator func(string) bool
+	loginValidator func(*statement.LoginStatement) bool
 	mu             sync.Mutex
 }
 
@@ -33,7 +34,7 @@ type ServerConfig struct {
 	Port           int
 	Logger         *logrus.Logger
 	Handler        func(net.Conn, *transport.Message)
-	LoginValidator func(string) bool
+	LoginValidator func(*statement.LoginStatement) bool
 }
 
 func NewMessageServer(cfg *ServerConfig) *MessageServer {

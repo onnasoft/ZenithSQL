@@ -46,15 +46,20 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) bool {
 		return false
 	}
 
-	token := message.Stmt.(*statement.LoginStatement).Token
+	stmt := message.Stmt.(*statement.LoginStatement)
+	if stmt.Timestamp > uint64(time.Now().UnixNano()) {
+		s.logger.Warn("Invalid timestamp from:", conn.RemoteAddr())
+		return false
+	}
 
-	if s.loginValidator != nil && !s.loginValidator(token) {
+	if s.loginValidator != nil && !s.loginValidator(stmt) {
 		s.logger.Warn("Invalid token from:", conn.RemoteAddr())
 		return false
 	}
 
 	response, _ := transport.NewMessage(protocol.Login, statement.NewEmptyStatement(protocol.Login))
 	response.Header.MessageID = header.MessageID
+	response.Header.Timestamp = stmt.Timestamp
 
 	if err := s.SendSilentMessage(conn, response); err != nil {
 		s.logger.Error("Error sending login response:", err)

@@ -20,10 +20,10 @@ func main() {
 		Port:   8081,
 		Logger: logger,
 		Handler: func(conn net.Conn, message *transport.Message) {
-			fmt.Println("Received message:", string(message.Body))
+			fmt.Println("Received message:", message.Stmt)
 		},
-		LoginValidator: func(token string) bool {
-			return token == "my-secure-token"
+		LoginValidator: func(stmt *statement.LoginStatement) bool {
+			return stmt.ValidateHash("my-secure-token")
 		},
 	})
 

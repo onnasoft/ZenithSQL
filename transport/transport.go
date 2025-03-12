@@ -14,6 +14,14 @@ const (
 	StartMarker       uint32 = 0xDEADBEEF
 	EndMarker         uint32 = 0xBEEFDEAD
 	MessageHeaderSize        = 40
+
+	// Offsets dentro del MessageHeader
+	StartMarkerOffset = 0
+	MessageIDOffset   = 4
+	MessageTypeOffset = 20
+	TimestampOffset   = 24
+	BodySizeOffset    = 32
+	EndMarkerOffset   = 36
 )
 
 type MessageHeader struct {
@@ -28,31 +36,31 @@ type MessageHeader struct {
 func (h *MessageHeader) Serialize() []byte {
 	bytes := make([]byte, MessageHeaderSize)
 
-	binary.BigEndian.PutUint32(bytes[0:4], h.StartMarker)
-	copy(bytes[4:20], h.MessageID[:])
-	binary.BigEndian.PutUint32(bytes[20:24], uint32(h.MessageType))
-	binary.BigEndian.PutUint64(bytes[24:32], h.Timestamp)
-	binary.BigEndian.PutUint32(bytes[32:36], h.BodySize)
-	binary.BigEndian.PutUint32(bytes[36:40], h.EndMarker)
+	binary.BigEndian.PutUint32(bytes[StartMarkerOffset:MessageIDOffset], h.StartMarker)
+	copy(bytes[MessageIDOffset:MessageTypeOffset], h.MessageID[:])
+	binary.BigEndian.PutUint32(bytes[MessageTypeOffset:TimestampOffset], uint32(h.MessageType))
+	binary.BigEndian.PutUint64(bytes[TimestampOffset:BodySizeOffset], h.Timestamp)
+	binary.BigEndian.PutUint32(bytes[BodySizeOffset:EndMarkerOffset], h.BodySize)
+	binary.BigEndian.PutUint32(bytes[EndMarkerOffset:MessageHeaderSize], h.EndMarker)
 
 	return bytes
 }
 
 func (h *MessageHeader) Deserialize(bytes []byte) error {
 	if len(bytes) != MessageHeaderSize {
-		return fmt.Errorf("header size must be %v bytes", MessageHeaderSize)
+		return fmt.Errorf("header size must be %v bytes, got %v", MessageHeaderSize, len(bytes))
 	}
 
-	h.StartMarker = binary.BigEndian.Uint32(bytes[0:4])
+	h.StartMarker = binary.BigEndian.Uint32(bytes[StartMarkerOffset:MessageIDOffset])
 	if h.StartMarker != StartMarker {
 		return fmt.Errorf("invalid start marker: expected 0xDEADBEEF, got 0x%X", h.StartMarker)
 	}
 
-	copy(h.MessageID[:], bytes[4:20])
-	h.MessageType = protocol.MessageType(binary.BigEndian.Uint32(bytes[20:24]))
-	h.Timestamp = binary.BigEndian.Uint64(bytes[24:32])
-	h.BodySize = binary.BigEndian.Uint32(bytes[32:36])
-	h.EndMarker = binary.BigEndian.Uint32(bytes[36:40])
+	copy(h.MessageID[:], bytes[MessageIDOffset:MessageTypeOffset])
+	h.MessageType = protocol.MessageType(binary.BigEndian.Uint32(bytes[MessageTypeOffset:TimestampOffset]))
+	h.Timestamp = binary.BigEndian.Uint64(bytes[TimestampOffset:BodySizeOffset])
+	h.BodySize = binary.BigEndian.Uint32(bytes[BodySizeOffset:EndMarkerOffset])
+	h.EndMarker = binary.BigEndian.Uint32(bytes[EndMarkerOffset:MessageHeaderSize])
 
 	if h.EndMarker != EndMarker {
 		return fmt.Errorf("invalid end marker: expected 0xBEEFDEAD, got 0x%X", h.EndMarker)

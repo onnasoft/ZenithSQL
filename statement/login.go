@@ -1,7 +1,12 @@
 package statement
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/sql-parser/protocol"
@@ -9,22 +14,21 @@ import (
 )
 
 type LoginStatement struct {
-	Timestamp int64  `msgpack:"timestamp" json:"timestamp" valid:"required"`
-	Token     string `msgpack:"token" json:"token" valid:"required"`
+	Timestamp uint64 `msgpack:"timestamp" json:"timestamp"`
+	Hash      string `msgpack:"hash" json:"hash"`
 }
 
-func NewLoginStatement(timestamp int64, token string) (*LoginStatement, error) {
-	if timestamp <= 0 {
-		return nil, errors.New("timestamp must be a valid Unix timestamp")
-	}
-
+func NewLoginStatement(token string) (*LoginStatement, error) {
 	if token == "" {
 		return nil, errors.New("token cannot be empty")
 	}
 
+	timestamp := uint64(time.Now().UnixNano())
+	hash := generateHash(token, timestamp)
+
 	stmt := &LoginStatement{
 		Timestamp: timestamp,
-		Token:     token,
+		Hash:      hash,
 	}
 
 	if _, err := govalidator.ValidateStruct(stmt); err != nil {
@@ -32,6 +36,17 @@ func NewLoginStatement(timestamp int64, token string) (*LoginStatement, error) {
 	}
 
 	return stmt, nil
+}
+
+func (l *LoginStatement) ValidateHash(token string) bool {
+	expectedHash := generateHash(token, l.Timestamp)
+	return hmac.Equal([]byte(l.Hash), []byte(expectedHash))
+}
+
+func generateHash(token string, timestamp uint64) string {
+	h := hmac.New(sha256.New, []byte(token))
+	h.Write([]byte(fmt.Sprintf("%d", timestamp)))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (l *LoginStatement) Protocol() protocol.MessageType {

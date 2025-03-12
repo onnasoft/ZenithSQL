@@ -60,8 +60,7 @@ func (c *MessageClient) Connect() error {
 }
 
 func (c *MessageClient) authenticate() error {
-	timestamp := time.Now().Unix()
-	stmt, _ := statement.NewLoginStatement(timestamp, c.token)
+	stmt, _ := statement.NewLoginStatement(c.token)
 	loginMessage, _ := transport.NewMessage(protocol.Login, stmt)
 	response, err := c.SendMessage(loginMessage)
 	if err != nil {
@@ -71,7 +70,14 @@ func (c *MessageClient) authenticate() error {
 	if response.Header.MessageType != protocol.Login {
 		return errors.New("unexpected response from server")
 	}
-	fmt.Println("response:", response.Stmt)
+
+	if response.Header.Timestamp != uint64(stmt.Timestamp) {
+		return errors.New("timestamp mismatch in response")
+	}
+
+	if response.Stmt.Protocol() != protocol.Login {
+		return errors.New("invalid statement type in response")
+	}
 
 	return nil
 }
