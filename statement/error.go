@@ -20,6 +20,7 @@ const (
 	ErrCodeInvalidMessagePackData    = 1006
 	InvalidCreateDatabaseFormatError = 1007
 	InvalidDatabaseNameError         = 1008
+	ErrUnsupportedStatement          = 2001
 )
 
 func NewInvalidDatabaseNameError(sql string) error {
@@ -75,5 +76,12 @@ func NewInvalidMessagePackDataError() error {
 	return &SQLError{
 		Code:    ErrCodeInvalidMessagePackData,
 		Message: "invalid MessagePack data",
+	}
+}
+
+func NewErrUnsupportedStatement() error {
+	return &SQLError{
+		Code:    ErrUnsupportedStatement,
+		Message: "unsupported statement",
 	}
 }

@@ -146,9 +146,13 @@ func (s *MessageServer) GetRandomConnection() net.Conn {
 	return connections[h.Intn(len(connections))]
 }
 
-func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
+func (s *MessageServer) SendSilentMessage(conn net.Conn, message *transport.Message) error {
 	_, err := conn.Write(message.Serialize())
-	if err != nil {
+	return err
+}
+
+func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
+	if err := s.SendSilentMessage(conn, message); err != nil {
 		return nil, err
 	}
 
@@ -173,11 +177,16 @@ func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (
 	}
 }
 
-func (s *MessageServer) closeConnection(conn net.Conn) {
+func (s *MessageServer) closeConnection(conn net.Conn, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if _, exists := s.connections[conn]; !exists {
+		return
+	}
+
 	conn.Close()
 	delete(s.connections, conn)
-	s.logger.Info("Connection closed:", conn.RemoteAddr())
+
+	s.logger.Info("Connection closed:", conn.RemoteAddr(), " Reason:", reason)
 }

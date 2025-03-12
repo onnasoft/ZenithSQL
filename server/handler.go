@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/onnasoft/sql-parser/protocol"
+	"github.com/onnasoft/sql-parser/statement"
 	"github.com/onnasoft/sql-parser/transport"
 )
 
@@ -23,26 +24,14 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 	s.mu.Unlock()
 
 	go s.handleIncomingMessages(conn)
-
-	_, err := s.SendMessage(conn, transport.NewMessage(protocol.Welcome, []byte("Welcome to the server!")))
-	if err != nil {
-		s.logger.Error("Error sending welcome message:", err)
-		s.closeConnection(conn)
-	}
 }
 
 func (s *MessageServer) authenticateConnection(conn net.Conn) bool {
-	conn.SetDeadline(time.Now().Add(10 * time.Second)) // 10s para autenticarse
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
 
-	headerBytes := make([]byte, transport.MessageHeaderSize)
-	if _, err := conn.Read(headerBytes); err != nil {
-		s.logger.Error("Error reading login header:", err)
-		return false
-	}
-
-	var header transport.MessageHeader
-	if err := header.Deserialize(headerBytes); err != nil {
-		s.logger.Error("Error deserializing login header:", err)
+	header, body, err := s.readMessage(conn)
+	if err != nil {
+		s.logger.Error("Error reading message:", err)
 		return false
 	}
 
@@ -51,16 +40,25 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) bool {
 		return false
 	}
 
-	body := make([]byte, header.BodySize)
-	if _, err := conn.Read(body); err != nil {
-		s.logger.Error("Error reading login body:", err)
+	message, err := transport.ParseStatement(header, body)
+	if err != nil {
+		s.logger.Error("Error parsing message:", err)
 		return false
 	}
 
-	token := string(body)
+	token := message.Stmt.(*statement.LoginStatement).Token
 
 	if s.loginValidator != nil && !s.loginValidator(token) {
 		s.logger.Warn("Invalid token from:", conn.RemoteAddr())
+		return false
+	}
+
+	response, _ := transport.NewMessage(protocol.Login, statement.NewEmptyStatement(protocol.Login))
+	response.Header.MessageID = header.MessageID
+
+	if err := s.SendSilentMessage(conn, response); err != nil {
+		s.logger.Error("Error sending login response:", err)
+		s.closeConnection(conn, "authentication error")
 		return false
 	}
 
@@ -69,43 +67,73 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) bool {
 }
 
 func (s *MessageServer) handleIncomingMessages(conn net.Conn) {
-	defer s.closeConnection(conn)
+	defer s.closeConnection(conn, "connection closed")
 
 	for {
 		conn.SetDeadline(time.Now().Add(30 * time.Second))
 
-		headerBytes := make([]byte, transport.MessageHeaderSize)
-		if _, err := conn.Read(headerBytes); err != nil {
-			s.logger.Error("Error reading header:", err)
+		header, body, err := s.readMessage(conn)
+		if err != nil {
+			s.logger.Error("Error reading message:", err)
 			return
 		}
 
-		var header transport.MessageHeader
-		if err := header.Deserialize(headerBytes); err != nil {
-			s.logger.Error("Error deserializing header:", err)
+		message, err := transport.ParseStatement(header, body)
+		if err != nil {
+			s.logger.Error("Error parsing message:", err)
 			return
-		}
-
-		body := make([]byte, header.BodySize)
-		if _, err := conn.Read(body); err != nil {
-			s.logger.Error("Error reading body:", err)
-			return
-		}
-
-		message := &transport.Message{
-			Header: header,
-			Body:   body,
 		}
 
 		messageID := hex.EncodeToString(message.Header.MessageID[:])
 
-		s.mu.Lock()
-		if responseChan, exists := s.responseMap[messageID]; exists {
-			responseChan <- message
-			delete(s.responseMap, messageID)
-		} else if s.messageHandler != nil {
-			go s.messageHandler(conn, message)
+		if s.handlePingMessage(conn, message) {
+			continue
 		}
-		s.mu.Unlock()
+
+		s.processMessage(conn, messageID, message)
+	}
+}
+
+func (s *MessageServer) readMessage(conn net.Conn) (*transport.MessageHeader, []byte, error) {
+	headerBytes := make([]byte, transport.MessageHeaderSize)
+	if _, err := conn.Read(headerBytes); err != nil {
+		return nil, nil, err
+	}
+
+	header := &transport.MessageHeader{}
+	if err := header.Deserialize(headerBytes); err != nil {
+		return nil, nil, err
+	}
+
+	body := make([]byte, header.BodySize)
+	if _, err := conn.Read(body); err != nil {
+		return nil, nil, err
+	}
+
+	return header, body, nil
+}
+
+func (s *MessageServer) handlePingMessage(conn net.Conn, message *transport.Message) bool {
+	if message.Header.MessageType == protocol.Ping {
+		s.logger.Info("Received PING from:", conn.RemoteAddr())
+		pongMessage, _ := transport.NewMessage(protocol.Pong, statement.NewEmptyStatement(protocol.Pong))
+		pongMessage.Header.MessageID = message.Header.MessageID
+		if err := s.SendSilentMessage(conn, pongMessage); err != nil {
+			s.logger.Error("Error sending PONG:", err)
+		}
+		return true
+	}
+	return false
+}
+
+func (s *MessageServer) processMessage(conn net.Conn, messageID string, message *transport.Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if responseChan, exists := s.responseMap[messageID]; exists {
+		responseChan <- message
+		delete(s.responseMap, messageID)
+	} else if s.messageHandler != nil {
+		go s.messageHandler(conn, message)
 	}
 }

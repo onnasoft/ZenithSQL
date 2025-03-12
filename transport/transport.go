@@ -7,12 +7,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/onnasoft/sql-parser/protocol"
+	"github.com/onnasoft/sql-parser/statement"
 )
 
 const (
 	StartMarker       uint32 = 0xDEADBEEF
 	EndMarker         uint32 = 0xBEEFDEAD
-	MessageHeaderSize        = 36 // Se aumentó para incluir timestamp y markers
+	MessageHeaderSize        = 40
 )
 
 type MessageHeader struct {
@@ -61,13 +62,19 @@ func (h *MessageHeader) Deserialize(bytes []byte) error {
 }
 
 type Message struct {
-	Header MessageHeader
+	Header *MessageHeader
 	Body   []byte
+	Stmt   statement.Statement
 }
 
-func NewMessage(messageType protocol.MessageType, body []byte) *Message {
+func NewMessage(messageType protocol.MessageType, stmt statement.Statement) (*Message, error) {
+	body, err := stmt.Serialize()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Message{
-		Header: MessageHeader{
+		Header: &MessageHeader{
 			StartMarker: StartMarker,
 			MessageID:   uuid.New(),
 			MessageType: messageType,
@@ -76,7 +83,20 @@ func NewMessage(messageType protocol.MessageType, body []byte) *Message {
 			EndMarker:   EndMarker,
 		},
 		Body: body,
+	}, nil
+}
+
+func ParseStatement(header *MessageHeader, body []byte) (*Message, error) {
+	stmt, err := statement.DeserializeStatement(header.MessageType, body)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Message{
+		Header: header,
+		Body:   body,
+		Stmt:   stmt,
+	}, nil
 }
 
 func (m *Message) Serialize() []byte {

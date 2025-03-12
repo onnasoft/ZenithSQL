@@ -1,51 +1,33 @@
 package statement
 
 import (
+	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/sql-parser/protocol"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 type CreateDatabaseStatement struct {
-	DatabaseName string `msgpack:"database_name" json:"database_name" valid:"required,alphanumunderscore"`
+	DatabaseName string `msgpack:"database_name" valid:"required,alphanumunderscore"`
 }
 
-func (c *CreateDatabaseStatement) Protocol() protocol.MessageType {
-	return protocol.CreateDatabase
-}
+func NewCreateDatabaseStatement(databaseName string) (*CreateDatabaseStatement, error) {
+	stmt := &CreateDatabaseStatement{DatabaseName: databaseName}
 
-func (c *CreateDatabaseStatement) Serialize() ([]byte, error) {
-	msgpackBytes, err := msgpack.Marshal(c)
-	if err != nil {
+	if _, err := govalidator.ValidateStruct(stmt); err != nil {
 		return nil, err
 	}
 
-	length := len(msgpackBytes)
-	prefixedBytes := make([]byte, 4+length)
-	prefixedBytes[0] = byte(length >> 24)
-	prefixedBytes[1] = byte(length >> 16)
-	prefixedBytes[2] = byte(length >> 8)
-	prefixedBytes[3] = byte(length)
+	return stmt, nil
+}
 
-	copy(prefixedBytes[4:], msgpackBytes)
+func (c CreateDatabaseStatement) Protocol() protocol.MessageType {
+	return protocol.CreateDatabase
+}
 
-	return prefixedBytes, nil
+func (c CreateDatabaseStatement) Serialize() ([]byte, error) {
+	return msgpack.Marshal(c)
 }
 
 func (c *CreateDatabaseStatement) Deserialize(data []byte) error {
-	if len(data) < 4 {
-		return NewInvalidMessagePackDataError()
-	}
-
-	length := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
-
-	if len(data[4:]) != length {
-		return NewInvalidMessagePackDataError()
-	}
-
-	err := msgpack.Unmarshal(data[4:], c)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return msgpack.Unmarshal(data, c)
 }
