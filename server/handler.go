@@ -9,45 +9,29 @@ import (
 	"github.com/onnasoft/sql-parser/transport"
 )
 
-func (s *TCPServer) handleConnection(conn net.Conn) {
+func (s *MessageServer) handleConnection(conn net.Conn) {
 	s.mu.Lock()
-	s.conns[conn] = struct{}{}
+	s.connections[conn] = struct{}{}
 	s.mu.Unlock()
 
 	s.logger.Info("New connection:", conn.RemoteAddr())
 
-	go s.reader(conn)
-	go s.alive(conn)
+	go s.handleIncomingMessages(conn)
 
 	_, err := s.SendMessage(conn, transport.NewMessage(protocol.Welcome, []byte("Welcome to the server!")))
 	if err != nil {
 		s.logger.Error("Error sending welcome message:", err)
+		s.closeConnection(conn)
 	}
 }
 
-func (s *TCPServer) alive(conn net.Conn) {
-	for {
-		_, err := s.SendMessage(conn, transport.NewMessage(protocol.Ping, []byte("Are you alive?")))
-		if err != nil {
-			s.logger.Error("Error sending alive message:", err)
-			return
-		}
-
-		time.Sleep(30 * time.Second)
-	}
-}
-
-func (s *TCPServer) reader(conn net.Conn) {
-	defer func() {
-		conn.Close()
-		s.mu.Lock()
-		delete(s.conns, conn)
-		s.mu.Unlock()
-		s.logger.Info("Connection closed:", conn.RemoteAddr())
-	}()
+func (s *MessageServer) handleIncomingMessages(conn net.Conn) {
+	defer s.closeConnection(conn)
 
 	for {
-		headerBytes := make([]byte, 24)
+		conn.SetDeadline(time.Now().Add(30 * time.Second)) // Timeout automático si no hay actividad
+
+		headerBytes := make([]byte, transport.MessageHeaderSize)
 		if _, err := conn.Read(headerBytes); err != nil {
 			s.logger.Error("Error reading header:", err)
 			return
@@ -70,36 +54,51 @@ func (s *TCPServer) reader(conn net.Conn) {
 			Body:   body,
 		}
 
-		messageId := hex.EncodeToString(message.Header.MessageID[:])
+		messageID := hex.EncodeToString(message.Header.MessageID[:])
 
 		s.mu.Lock()
-		if responseChan, ok := s.responses[messageId]; ok {
+		if responseChan, exists := s.responseMap[messageID]; exists {
 			responseChan <- message
-			delete(s.responses, messageId)
-		} else if s.handler != nil {
-			go s.handler(message)
+			delete(s.responseMap, messageID)
+		} else if s.messageHandler != nil {
+			go s.messageHandler(conn, message)
 		}
 		s.mu.Unlock()
 	}
 }
 
-func (s *TCPServer) SendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
+func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
 	_, err := conn.Write(message.Serialize())
 	if err != nil {
 		return nil, err
 	}
 
-	messageId := hex.EncodeToString(message.Header.MessageID[:])
+	messageID := hex.EncodeToString(message.Header.MessageID[:])
 
 	s.mu.Lock()
-	s.responses[messageId] = make(chan *transport.Message)
+	responseChan := make(chan *transport.Message, 1)
+	s.responseMap[messageID] = responseChan
 	s.mu.Unlock()
 
-	response := <-s.responses[messageId]
+	defer func() {
+		s.mu.Lock()
+		delete(s.responseMap, messageID)
+		s.mu.Unlock()
+	}()
 
+	select {
+	case response := <-responseChan:
+		return response, nil
+	case <-time.After(5 * time.Second):
+		return nil, net.ErrClosed
+	}
+}
+
+func (s *MessageServer) closeConnection(conn net.Conn) {
 	s.mu.Lock()
-	delete(s.responses, messageId)
-	s.mu.Unlock()
+	defer s.mu.Unlock()
 
-	return response, nil
+	conn.Close()
+	delete(s.connections, conn)
+	s.logger.Info("Connection closed:", conn.RemoteAddr())
 }

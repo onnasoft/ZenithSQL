@@ -11,44 +11,48 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type Task struct {
+type MessageTask struct {
 	Message    *transport.Message
 	Connection net.Conn
 }
 
-type TCPServer struct {
-	port      int
-	listener  net.Listener
-	conns     map[net.Conn]struct{}
-	queue     chan *Task
-	responses map[string]chan *transport.Message
-	logger    logrus.Logger
-	handler   func(*transport.Message)
-	mu        sync.Mutex
+type MessageServer struct {
+	listener       net.Listener
+	connections    map[net.Conn]struct{}
+	taskQueue      chan *MessageTask
+	responseMap    map[string]chan *transport.Message
+	port           int
+	logger         *logrus.Logger
+	messageHandler func(net.Conn, *transport.Message)
+	mu             sync.Mutex
 }
 
-func NewTCPServer(port int) *TCPServer {
-	return &TCPServer{
-		port:      port,
-		conns:     make(map[net.Conn]struct{}),
-		queue:     make(chan *Task),
-		responses: make(map[string]chan *transport.Message),
+type ServerConfig struct {
+	Port    int
+	Handler func(net.Conn, *transport.Message)
+	Logger  *logrus.Logger
+}
+
+func NewMessageServer(cfg *ServerConfig) *MessageServer {
+	return &MessageServer{
+		port:           cfg.Port,
+		logger:         cfg.Logger,
+		messageHandler: cfg.Handler,
+		connections:    make(map[net.Conn]struct{}),
+		taskQueue:      make(chan *MessageTask),
+		responseMap:    make(map[string]chan *transport.Message),
 	}
 }
 
-func (s *TCPServer) SetHandler(handler func(*transport.Message)) {
-	s.handler = handler
-}
-
-func (s *TCPServer) Start() error {
+func (s *MessageServer) Start() error {
 	defer func() {
-		for conn := range s.conns {
+		for conn := range s.connections {
 			conn.Close()
 		}
-
-		s.conns = make(map[net.Conn]struct{})
-		close(s.queue)
+		s.connections = make(map[net.Conn]struct{})
+		close(s.taskQueue)
 	}()
+
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil {
 		return err
@@ -56,8 +60,9 @@ func (s *TCPServer) Start() error {
 
 	s.logger.Info("Server is running at port ", s.port)
 
-	go s.sender()
+	go s.processQueue()
 	s.listener = listener
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -68,33 +73,34 @@ func (s *TCPServer) Start() error {
 	}
 }
 
-func (s *TCPServer) sender() {
-	for task := range s.queue {
-		if response, err := s.SendMessage(task.Connection, task.Message); err != nil {
-			s.logger.Info("Error sending message:", err)
-			s.logger.Info("Response: ", response)
+func (s *MessageServer) processQueue() {
+	for task := range s.taskQueue {
+		response, err := s.SendMessage(task.Connection, task.Message)
+		if err != nil {
+			s.logger.Error("Error sending message:", err)
 		}
+		s.logger.Info("Response: ", response)
 	}
 }
 
-type Responses struct {
+type MessageResponse struct {
 	Result *transport.Message
 	Error  error
 }
 
-func (s *TCPServer) SendToAll(message *transport.Message) []*Responses {
+func (s *MessageServer) SendToAll(message *transport.Message) []*MessageResponse {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var wg sync.WaitGroup
-	responseChan := make(chan *Responses, len(s.conns))
+	responseChan := make(chan *MessageResponse, len(s.connections))
 
-	for conn := range s.conns {
-		wg.Add(1)
+	wg.Add(len(s.connections))
+	for conn := range s.connections {
 		go func(c net.Conn) {
 			defer wg.Done()
 			response, err := s.SendMessage(c, message)
-			responseChan <- &Responses{
+			responseChan <- &MessageResponse{
 				Result: response,
 				Error:  err,
 			}
@@ -104,7 +110,7 @@ func (s *TCPServer) SendToAll(message *transport.Message) []*Responses {
 	wg.Wait()
 	close(responseChan)
 
-	responses := make([]*Responses, 0, len(s.conns))
+	responses := make([]*MessageResponse, 0, len(s.connections))
 	for response := range responseChan {
 		responses = append(responses, response)
 	}
@@ -112,25 +118,26 @@ func (s *TCPServer) SendToAll(message *transport.Message) []*Responses {
 	return responses
 }
 
-func (s *TCPServer) Stop() error {
+func (s *MessageServer) Stop() error {
+	if s.listener == nil {
+		return fmt.Errorf("server is not running")
+	}
 	return s.listener.Close()
 }
 
-func (s *TCPServer) GetConnection() net.Conn {
+func (s *MessageServer) GetRandomConnection() net.Conn {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if len(s.conns) == 0 {
+	if len(s.connections) == 0 {
 		return nil
 	}
 
-	connections := make([]net.Conn, 0, len(s.conns))
-	for conn := range s.conns {
+	connections := make([]net.Conn, 0, len(s.connections))
+	for conn := range s.connections {
 		connections = append(connections, conn)
 	}
 
 	h := rand.New(rand.NewSource(time.Now().UnixNano()))
-	selected := connections[h.Intn(len(connections))]
-
-	return selected
+	return connections[h.Intn(len(connections))]
 }
