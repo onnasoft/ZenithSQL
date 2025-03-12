@@ -1,6 +1,8 @@
 package statement
 
 import (
+	"fmt"
+
 	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/sql-parser/protocol"
 	"github.com/vmihailenco/msgpack/v5"
@@ -24,10 +26,14 @@ func (c CreateDatabaseStatement) Protocol() protocol.MessageType {
 	return protocol.CreateDatabase
 }
 
-func (c CreateDatabaseStatement) Serialize() ([]byte, error) {
+func (c CreateDatabaseStatement) ToBytes() ([]byte, error) {
 	return msgpack.Marshal(c)
 }
 
-func (c *CreateDatabaseStatement) Deserialize(data []byte) error {
+func (c *CreateDatabaseStatement) FromBytes(data []byte) error {
 	return msgpack.Unmarshal(data, c)
+}
+
+func (c CreateDatabaseStatement) String() string {
+	return fmt.Sprintf("CreateDatabaseStatement{DatabaseName: %s}", c.DatabaseName)
 }

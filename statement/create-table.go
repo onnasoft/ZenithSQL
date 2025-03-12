@@ -2,6 +2,7 @@ package statement
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/sql-parser/protocol"
@@ -12,15 +13,6 @@ type CreateTableStatement struct {
 	TableName string             `msgpack:"table_name" json:"table_name" valid:"required,alphanumunderscore"`
 	Columns   []ColumnDefinition `msgpack:"columns" json:"columns" valid:"required"`
 	Storage   string             `msgpack:"storage" json:"storage"`
-}
-
-type ColumnDefinition struct {
-	Name         string `msgpack:"name" json:"name" valid:"required,alphanumunderscore"`
-	Type         string `msgpack:"type" json:"type" valid:"required"`
-	Length       int    `msgpack:"length" json:"length"`
-	PrimaryKey   bool   `msgpack:"primary_key" json:"primary_key"`
-	Index        bool   `msgpack:"index" json:"index"`
-	DefaultValue string `msgpack:"default_value" json:"default_value"`
 }
 
 func NewCreateTableStatement(tableName string, columns []ColumnDefinition, storage string) (*CreateTableStatement, error) {
@@ -51,10 +43,14 @@ func (c *CreateTableStatement) Protocol() protocol.MessageType {
 	return protocol.CreateTable
 }
 
-func (c *CreateTableStatement) Serialize() ([]byte, error) {
+func (c *CreateTableStatement) ToBytes() ([]byte, error) {
 	return msgpack.Marshal(c)
 }
 
-func (c *CreateTableStatement) Deserialize(data []byte) error {
+func (c *CreateTableStatement) FromBytes(data []byte) error {
 	return msgpack.Unmarshal(data, c)
+}
+
+func (c *CreateTableStatement) String() string {
+	return fmt.Sprintf("CreateTableStatement{TableName: %s, Columns: %v, Storage: %s}", c.TableName, c.Columns, c.Storage)
 }

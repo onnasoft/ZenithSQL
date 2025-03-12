@@ -6,8 +6,9 @@ import (
 
 type Statement interface {
 	Protocol() protocol.MessageType
-	Serialize() ([]byte, error)
-	Deserialize(data []byte) error
+	ToBytes() ([]byte, error)
+	FromBytes(data []byte) error
+	String() string
 }
 
 func DeserializeStatement(messageType protocol.MessageType, data []byte) (Statement, error) {
@@ -29,5 +30,5 @@ func DeserializeStatement(messageType protocol.MessageType, data []byte) (Statem
 		return nil, NewErrUnsupportedStatement()
 	}
 
-	return stmt, stmt.Deserialize(data)
+	return stmt, stmt.FromBytes(data)
 }

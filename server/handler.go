@@ -15,7 +15,7 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 
 	if !s.authenticateConnection(conn) {
 		s.logger.Warn("Authentication failed for:", conn.RemoteAddr())
-		conn.Close()
+		s.closeConnection(conn, "authentication error")
 		return
 	}
 
@@ -31,7 +31,7 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) bool {
 
 	header, body, err := s.readMessage(conn)
 	if err != nil {
-		s.logger.Error("Error reading message:", err)
+		s.closeConnection(conn, "read error")
 		return false
 	}
 
@@ -123,7 +123,6 @@ func (s *MessageServer) readMessage(conn net.Conn) (*transport.MessageHeader, []
 
 func (s *MessageServer) handlePingMessage(conn net.Conn, message *transport.Message) bool {
 	if message.Header.MessageType == protocol.Ping {
-		s.logger.Info("Received PING from:", conn.RemoteAddr())
 		pongMessage, _ := transport.NewMessage(protocol.Pong, statement.NewEmptyStatement(protocol.Pong))
 		pongMessage.Header.MessageID = message.Header.MessageID
 		if err := s.SendSilentMessage(conn, pongMessage); err != nil {
@@ -136,9 +135,10 @@ func (s *MessageServer) handlePingMessage(conn net.Conn, message *transport.Mess
 
 func (s *MessageServer) processMessage(conn net.Conn, messageID string, message *transport.Message) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	responseChan, exists := s.responseMap[messageID]
+	s.mu.Unlock()
 
-	if responseChan, exists := s.responseMap[messageID]; exists {
+	if exists {
 		responseChan <- message
 		delete(s.responseMap, messageID)
 	} else if s.messageHandler != nil {

@@ -76,7 +76,7 @@ type Message struct {
 }
 
 func NewMessage(messageType protocol.MessageType, stmt statement.Statement) (*Message, error) {
-	body, err := stmt.Serialize()
+	body, err := stmt.ToBytes()
 	if err != nil {
 		return nil, err
 	}
@@ -148,4 +148,8 @@ func (m *Message) OperationType() string {
 	default:
 		return "UNKNOWN"
 	}
+}
+
+func (m *Message) String() string {
+	return m.Stmt.String()
 }

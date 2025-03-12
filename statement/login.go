@@ -60,10 +60,14 @@ func (l *LoginStatement) Protocol() protocol.MessageType {
 	return protocol.Login
 }
 
-func (l *LoginStatement) Serialize() ([]byte, error) {
+func (l *LoginStatement) ToBytes() ([]byte, error) {
 	return msgpack.Marshal(l)
 }
 
-func (l *LoginStatement) Deserialize(data []byte) error {
+func (l *LoginStatement) FromBytes(data []byte) error {
 	return msgpack.Unmarshal(data, l)
+}
+
+func (l *LoginStatement) String() string {
+	return fmt.Sprintf("LoginStatement{Timestamp: %d, NodeName: %s, IsReplica: %t}", l.Timestamp, l.NodeName, l.IsReplica)
 }

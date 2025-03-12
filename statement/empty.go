@@ -1,6 +1,8 @@
 package statement
 
 import (
+	"fmt"
+
 	"github.com/onnasoft/sql-parser/protocol"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -19,10 +21,14 @@ func (e *EmptyStatement) Protocol() protocol.MessageType {
 	return e.MessageType
 }
 
-func (e *EmptyStatement) Serialize() ([]byte, error) {
+func (e *EmptyStatement) ToBytes() ([]byte, error) {
 	return msgpack.Marshal(e)
 }
 
-func (e *EmptyStatement) Deserialize(data []byte) error {
+func (e *EmptyStatement) FromBytes(data []byte) error {
 	return msgpack.Unmarshal(data, e)
+}
+
+func (e *EmptyStatement) String() string {
+	return fmt.Sprintf("EmptyStatement{MessageType: %s}", e.MessageType)
 }
