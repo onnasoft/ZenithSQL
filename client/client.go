@@ -18,6 +18,7 @@ type Connection struct {
 	conn      net.Conn
 	active    bool
 	closeChan chan struct{}
+	mu        sync.Mutex
 }
 
 type MessageClient struct {
@@ -60,8 +61,6 @@ func NewMessageClient(config *MessageConfig) *MessageClient {
 }
 
 func (c *MessageClient) Connect() error {
-	c.logger.Info("Connecting to server at:", c.serverAddr)
-
 	done := make(chan struct{})
 	c.wg.Add(c.maxConn)
 
@@ -103,17 +102,15 @@ func (c *MessageClient) startConnection() {
 		c.mu.Unlock()
 
 		go c.listenForMessages(newConn)
-		go c.sendPingPeriodically(newConn)
+		go c.managePings(newConn)
 
 		if err := c.authenticate(newConn); err != nil {
-			c.logger.Error("Authentication failed, retrying...")
-			newConn.conn.Close()
-			newConn.active = false
+			c.logger.Error("Failed to authenticate connection: ", err)
+			c.closeConnection(newConn)
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
-		c.logger.Info("Authenticated successfully on new connection")
 		break
 	}
 }
@@ -133,26 +130,33 @@ func (c *MessageClient) authenticate(conn *Connection) error {
 	return nil
 }
 
-func (c *MessageClient) sendPingPeriodically(conn *Connection) {
+func (c *MessageClient) managePings(conn *Connection) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
+			conn.mu.Lock()
 			if !conn.active {
+				conn.mu.Unlock()
 				return
 			}
+			conn.mu.Unlock()
 
 			pingMessage, _ := transport.NewMessage(protocol.Ping, statement.NewEmptyStatement(protocol.Ping))
 			response, err := c.SendMessage(pingMessage)
 
+			conn.mu.Lock()
 			if err != nil || response.Header.MessageType != protocol.Pong {
 				c.logger.Warn("Ping failed, marking connection inactive...")
 				conn.active = false
+				conn.mu.Unlock()
 				c.reconnect(conn)
 				return
 			}
+			conn.mu.Unlock()
+
 		case <-conn.closeChan:
 			return
 		}
@@ -169,7 +173,9 @@ func (c *MessageClient) sendMessage(conn *Connection, message *transport.Message
 
 	_, err := conn.conn.Write(message.Serialize())
 	if err != nil {
+		c.mu.Lock()
 		delete(c.responseMap, messageID)
+		c.mu.Unlock()
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
@@ -188,9 +194,7 @@ func (c *MessageClient) sendMessage(conn *Connection, message *transport.Message
 }
 
 func (c *MessageClient) SendMessage(message *transport.Message) (*transport.Message, error) {
-	c.mu.Lock()
 	conn := c.getAvailableConnection()
-	c.mu.Unlock()
 
 	if conn == nil {
 		c.logger.Warn("No active connections available, trying to reconnect...")
@@ -200,73 +204,20 @@ func (c *MessageClient) SendMessage(message *transport.Message) (*transport.Mess
 	return c.sendMessage(conn, message)
 }
 
-func (c *MessageClient) SendMessageToAll(message *transport.Message) []*transport.Message {
-	wg := sync.WaitGroup{}
-	wg.Add(len(c.connections))
-	messages := make([]*transport.Message, len(c.connections))
-	mu := sync.Mutex{}
-
-	for _, conn := range c.connections {
-		go func(conn *Connection) {
-			defer wg.Done()
-			response, err := c.sendMessage(conn, message)
-			if err != nil {
-				c.logger.Error("Failed to send message:", err)
-				return
-			}
-
-			mu.Lock()
-			messages = append(messages, response)
-			mu.Unlock()
-		}(conn)
-	}
-	wg.Wait()
-
-	return messages
-}
-
 func (c *MessageClient) getAvailableConnection() *Connection {
-	activeConnections := make([]*Connection, 0)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	for _, conn := range c.connections {
+		conn.mu.Lock()
 		if conn.active {
-			activeConnections = append(activeConnections, conn)
+			conn.mu.Unlock()
+			return conn
 		}
+		conn.mu.Unlock()
 	}
 
-	if len(activeConnections) == 0 {
-		return nil
-	}
-
-	c.lastUsed = (c.lastUsed + 1) % len(activeConnections)
-	return activeConnections[c.lastUsed]
-}
-
-func (c *MessageClient) listenForMessages(conn *Connection) {
-	for {
-		header, body, err := c.readMessage(conn.conn)
-		if err != nil {
-			c.logger.Error("Error reading message: ", err)
-			conn.active = false
-			return
-		}
-
-		message, err := transport.ParseStatement(header, body)
-		if err != nil {
-			c.logger.Error("Error parsing message: ", err)
-			conn.active = false
-			return
-		}
-
-		messageID := hex.EncodeToString(message.Header.MessageID[:])
-
-		c.mu.Lock()
-		if responseChan, exists := c.responseMap[messageID]; exists {
-			responseChan <- message
-		} else {
-			c.logger.Warn("Received unexpected message:", message.Header.MessageType)
-		}
-		c.mu.Unlock()
-	}
+	return nil
 }
 
 func (c *MessageClient) readMessage(conn net.Conn) (*transport.MessageHeader, []byte, error) {
@@ -288,17 +239,52 @@ func (c *MessageClient) readMessage(conn net.Conn) (*transport.MessageHeader, []
 	return header, body, nil
 }
 
-func (c *MessageClient) reconnect(conn *Connection) {
-	conn.conn.Close()
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *MessageClient) listenForMessages(conn *Connection) {
+	for {
+		header, body, err := c.readMessage(conn.conn)
+		if err != nil {
+			c.logger.Error("Error reading message: ", err)
+			c.closeConnection(conn)
+			return
+		}
 
+		message, err := transport.ParseStatement(header, body)
+		if err != nil {
+			c.logger.Error("Error parsing message: ", err)
+			c.closeConnection(conn)
+			return
+		}
+
+		messageID := hex.EncodeToString(message.Header.MessageID[:])
+
+		c.logger.Debug("Received message:", message.Header.MessageType)
+		c.logger.Debug("Message ID:", messageID)
+		c.logger.Debug("Message Body:", message.Stmt)
+
+		c.mu.Lock()
+		if responseChan, exists := c.responseMap[messageID]; exists {
+			responseChan <- message
+		} else {
+			c.logger.Warn("Received unexpected message:", message.Header.MessageType)
+		}
+		c.mu.Unlock()
+	}
+}
+
+func (c *MessageClient) closeConnection(conn *Connection) {
+	conn.conn.Close()
+
+	c.mu.Lock()
 	for i, s := range c.connections {
 		if s == conn {
 			c.connections = append(c.connections[:i], c.connections[i+1:]...)
 			break
 		}
 	}
+	c.mu.Unlock()
+}
 
+func (c *MessageClient) reconnect(conn *Connection) {
+	c.closeConnection(conn)
 	go c.startConnection()
 }

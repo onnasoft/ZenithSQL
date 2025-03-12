@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -16,32 +15,32 @@ import (
 
 type MessageTask struct {
 	Message    *transport.Message
-	Connection net.Conn
+	Connection *ConnectionHandler
 }
 
 type MessageServer struct {
 	listener       net.Listener
-	nodes          map[string]*Node
+	nodeManager    *NodeManager
 	taskQueue      chan *MessageTask
 	responseMap    map[string]chan *transport.Message
 	port           int
 	logger         *logrus.Logger
-	messageHandler func(net.Conn, *transport.Message)
+	messageHandler func(*ConnectionHandler, *transport.Message)
 	loginValidator func(*statement.LoginStatement) bool
 	tlsConfig      *tls.Config
 	mu             sync.Mutex
 }
 
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
-	var tlsConfig *tls.Config
+	defer recoverFromPanic("NewMessageServer", nil)
 
+	var tlsConfig *tls.Config
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		if err != nil {
 			cfg.Logger.Fatal("Failed to load TLS certificate:", err)
 		}
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-		cfg.Logger.Info("TLS enabled")
 	}
 
 	svr := &MessageServer{
@@ -49,7 +48,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		logger:         cfg.Logger,
 		messageHandler: cfg.Handler,
 		loginValidator: cfg.LoginValidator,
-		nodes:          make(map[string]*Node),
+		nodeManager:    NewNodeManager(cfg.Logger),
 		taskQueue:      make(chan *MessageTask),
 		responseMap:    make(map[string]chan *transport.Message),
 		tlsConfig:      tlsConfig,
@@ -63,14 +62,11 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 }
 
 func (s *MessageServer) Start() error {
+	defer recoverFromPanic("Start", s)
+
 	defer func() {
 		s.mu.Lock()
-		for _, node := range s.nodes {
-			for conn := range node.Connections {
-				conn.Close()
-			}
-		}
-		s.nodes = make(map[string]*Node)
+		s.nodeManager.ClearAllNodes()
 		close(s.taskQueue)
 		s.mu.Unlock()
 	}()
@@ -104,31 +100,48 @@ func (s *MessageServer) Start() error {
 }
 
 func (s *MessageServer) processQueue() {
+	defer recoverFromPanic("processQueue", s)
+
 	for task := range s.taskQueue {
-		response, err := s.SendMessage(task.Connection, task.Message)
+		_, err := s.SendMessage(task.Connection, task.Message)
 		if err != nil {
 			s.logger.Error("Error sending message:", err)
 		}
-		s.logger.Info("Response: ", response)
 	}
 }
 
-type MessageResponse struct {
-	Result *transport.Message
-	Error  error
+func (s *MessageServer) readMessage(conn net.Conn) (*transport.MessageHeader, []byte, error) {
+	headerBytes := make([]byte, transport.MessageHeaderSize)
+	if _, err := conn.Read(headerBytes); err != nil {
+		return nil, nil, err
+	}
+
+	header := &transport.MessageHeader{}
+	if err := header.Deserialize(headerBytes); err != nil {
+		return nil, nil, err
+	}
+
+	body := make([]byte, header.BodySize)
+	if _, err := conn.Read(body); err != nil {
+		return nil, nil, err
+	}
+
+	return header, body, nil
 }
 
 func (s *MessageServer) SendToAll(message *transport.Message) []*MessageResponse {
+	defer recoverFromPanic("SendToAll", s)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var wg sync.WaitGroup
-	responseChan := make(chan *MessageResponse, len(s.nodes))
+	responseChan := make(chan *MessageResponse, s.nodeManager.CountNodes())
 
-	wg.Add(len(s.nodes))
-	for _, node := range s.nodes {
+	wg.Add(s.nodeManager.CountNodes())
+	for _, node := range s.nodeManager.GetAllNodes() {
 		for conn := range node.Connections {
-			go func(c net.Conn) {
+			go func(c *ConnectionHandler) {
 				defer wg.Done()
 				response, err := s.SendMessage(c, message)
 				responseChan <- &MessageResponse{
@@ -142,7 +155,7 @@ func (s *MessageServer) SendToAll(message *transport.Message) []*MessageResponse
 	wg.Wait()
 	close(responseChan)
 
-	responses := make([]*MessageResponse, 0, len(s.nodes))
+	var responses []*MessageResponse
 	for response := range responseChan {
 		responses = append(responses, response)
 	}
@@ -150,58 +163,9 @@ func (s *MessageServer) SendToAll(message *transport.Message) []*MessageResponse
 	return responses
 }
 
-func (s *MessageServer) Stop() error {
-	if s.listener == nil {
-		return fmt.Errorf("server is not running")
-	}
-	return s.listener.Close()
-}
+func (s *MessageServer) SendMessage(conn *ConnectionHandler, message *transport.Message) (*transport.Message, error) {
+	defer recoverFromPanic("SendMessage", s)
 
-func (s *MessageServer) RegisterNode(id string, tags []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, exists := s.nodes[id]; !exists {
-		s.nodes[id] = NewNode(id, tags)
-	}
-}
-
-func (s *MessageServer) GetNodesByTag(tag string) []*Node {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var result []*Node
-	for _, node := range s.nodes {
-		if node.HasTag(tag) {
-			result = append(result, node)
-		}
-	}
-	return result
-}
-
-func (s *MessageServer) GetRandomNode() *Node {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if len(s.nodes) == 0 {
-		return nil
-	}
-
-	nodeList := make([]*Node, 0, len(s.nodes))
-	for _, node := range s.nodes {
-		nodeList = append(nodeList, node)
-	}
-
-	h := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return nodeList[h.Intn(len(nodeList))]
-}
-
-func (s *MessageServer) SendSilentMessage(conn net.Conn, message *transport.Message) error {
-	_, err := conn.Write(message.Serialize())
-	return err
-}
-
-func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
 	if err := s.SendSilentMessage(conn, message); err != nil {
 		return nil, err
 	}
@@ -221,22 +185,43 @@ func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (
 
 	select {
 	case response := <-responseChan:
+		node := s.nodeManager.GetNodeByConnection(conn)
+		if node != nil {
+			for _, replica := range node.Replicas {
+				_ = s.SendSilentMessage(replica, message)
+			}
+		}
 		return response, nil
 	case <-time.After(5 * time.Second):
 		return nil, net.ErrClosed
 	}
 }
 
-func (s *MessageServer) closeConnection(conn net.Conn, reason string) {
+func (s *MessageServer) SendSilentMessage(conn *ConnectionHandler, message *transport.Message) error {
+	defer recoverFromPanic("SendSilentMessage", s)
+
+	_, err := conn.Send(message)
+	return err
+}
+
+func (s *MessageServer) Stop() error {
+	defer recoverFromPanic("Stop", s)
+
+	if s.listener == nil {
+		return fmt.Errorf("server is not running")
+	}
+	return s.listener.Close()
+}
+
+func (s *MessageServer) closeConnection(conn *ConnectionHandler, reason string) {
+	defer recoverFromPanic("closeConnection", s)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, node := range s.nodes {
-		if _, exists := node.Connections[conn]; exists {
-			delete(node.Connections, conn)
-			conn.Close()
-			s.logger.Info("Connection closed:", conn.RemoteAddr(), " Reason:", reason)
-			return
-		}
+	node := s.nodeManager.GetNodeByConnection(conn)
+	if node != nil {
+		node.RemoveConnection(conn)
+		s.logger.Info("Connection closed:", conn.RemoteAddr(), " Reason:", reason)
 	}
 }

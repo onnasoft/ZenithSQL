@@ -3,7 +3,6 @@ package server
 import (
 	"crypto/tls"
 	"log"
-	"net"
 
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
@@ -13,7 +12,7 @@ import (
 type ServerConfig struct {
 	Port           int
 	Logger         *logrus.Logger
-	Handler        func(net.Conn, *transport.Message)
+	Handler        func(*ConnectionHandler, *transport.Message)
 	LoginValidator func(*statement.LoginStatement) bool
 	CertFile       string
 	KeyFile        string

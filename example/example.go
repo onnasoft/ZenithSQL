@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
 	"sync"
 	"time"
 
@@ -16,11 +15,12 @@ import (
 )
 
 const (
-	NUM_CLIENTS         = 100
-	MESSAGES_PER_CLIENT = 20000
-	TIMEOUT             = 3 * time.Second
-	SERVER_ADDR         = "127.0.0.1:8081"
-	TOKEN               = "my-secure-token"
+	NUM_CLIENTS                = 1
+	NUM_CONNECTIONS_PER_CLIENT = 1
+	MESSAGES_PER_CLIENT        = 1
+	TIMEOUT                    = 3 * time.Second
+	SERVER_ADDR                = "127.0.0.1:8081"
+	TOKEN                      = "my-secure-token"
 )
 
 var (
@@ -38,7 +38,7 @@ func main() {
 	svr = server.NewMessageServer(&server.ServerConfig{
 		Port:   8081,
 		Logger: logger,
-		Handler: func(conn net.Conn, message *transport.Message) {
+		Handler: func(conn *server.ConnectionHandler, message *transport.Message) {
 			msg, _ := transport.NewMessage(message.Stmt.Protocol(), statement.NewEmptyStatement(message.Stmt.Protocol()))
 			msg.Header.MessageID = message.Header.MessageID
 			msg.Header.MessageType = message.Header.MessageType
@@ -49,6 +49,7 @@ func main() {
 			}
 		},
 		LoginValidator: func(stmt *statement.LoginStatement) bool {
+			logger.Info("Validating login statement: ", stmt)
 			return stmt.ValidateHash(TOKEN)
 		},
 	})
@@ -99,9 +100,9 @@ func runClient(clientID int, logger *logrus.Logger) {
 	client := client.NewMessageClient(&client.MessageConfig{
 		ServerAddr: SERVER_ADDR,
 		Token:      TOKEN,
-		NodeID:     fmt.Sprintf("client_%d", clientID),
-		Tags:       []string{"client"},
-		MaxConn:    10,
+		NodeID:     fmt.Sprintf("master_%d", clientID),
+		Tags:       []string{"master"},
+		MaxConn:    NUM_CONNECTIONS_PER_CLIENT,
 		Timeout:    TIMEOUT,
 		Logger:     logger,
 	})
@@ -114,8 +115,9 @@ func runClient(clientID int, logger *logrus.Logger) {
 			DatabaseName: fmt.Sprintf("test_db_%d_%d", clientID, i),
 		})
 
-		_, err := client.SendMessage(msg)
+		msg, err := client.SendMessage(msg)
 		elapsed := time.Since(startTime)
+		logger.Info("msg:", msg, "err:", err, "elapsed:", elapsed)
 
 		mu.Lock()
 		if err != nil {
