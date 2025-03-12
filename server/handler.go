@@ -13,62 +13,64 @@ import (
 func (s *MessageServer) handleConnection(conn net.Conn) {
 	s.logger.Info("New connection:", conn.RemoteAddr())
 
-	if !s.authenticateConnection(conn) {
+	// Autenticación del nodo
+	nodeID, tags, authenticated := s.authenticateConnection(conn)
+	if !authenticated {
 		s.logger.Warn("Authentication failed for:", conn.RemoteAddr())
 		s.closeConnection(conn, "authentication error")
 		return
 	}
 
+	// Registrar nodo si no existe
 	s.mu.Lock()
-	s.connections[conn] = struct{}{}
+	node, exists := s.nodes[nodeID]
+	if !exists {
+		node = NewNode(nodeID, tags)
+		s.nodes[nodeID] = node
+	}
+	node.AddConnection(conn)
 	s.mu.Unlock()
+
+	s.logger.Info("Node registered:", nodeID, "Tags:", tags, "Connection from:", conn.RemoteAddr())
 
 	go s.handleIncomingMessages(conn)
 }
 
-func (s *MessageServer) authenticateConnection(conn net.Conn) bool {
+func (s *MessageServer) authenticateConnection(conn net.Conn) (string, []string, bool) {
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 	header, body, err := s.readMessage(conn)
 	if err != nil {
-		s.closeConnection(conn, "read error")
-		return false
+		s.logger.Error("Error reading login message:", err)
+		return "", nil, false
 	}
 
 	if header.MessageType != protocol.Login {
 		s.logger.Warn("Invalid first message type from:", conn.RemoteAddr())
-		return false
+		return "", nil, false
 	}
 
-	message, err := transport.ParseStatement(header, body)
-	if err != nil {
+	stmt := &statement.LoginStatement{}
+	if err := stmt.FromBytes(body); err != nil {
 		s.logger.Error("Error parsing message:", err)
-		return false
-	}
-
-	stmt := message.Stmt.(*statement.LoginStatement)
-	if stmt.Timestamp > uint64(time.Now().UnixNano()) {
-		s.logger.Warn("Invalid timestamp from:", conn.RemoteAddr())
-		return false
+		return "", nil, false
 	}
 
 	if s.loginValidator != nil && !s.loginValidator(stmt) {
 		s.logger.Warn("Invalid token from:", conn.RemoteAddr())
-		return false
+		return "", nil, false
 	}
 
 	response, _ := transport.NewMessage(protocol.Login, statement.NewEmptyStatement(protocol.Login))
 	response.Header.MessageID = header.MessageID
-	response.Header.Timestamp = stmt.Timestamp
 
 	if err := s.SendSilentMessage(conn, response); err != nil {
 		s.logger.Error("Error sending login response:", err)
-		s.closeConnection(conn, "authentication error")
-		return false
+		return "", nil, false
 	}
 
-	s.logger.Info("Client authenticated:", conn.RemoteAddr())
-	return true
+	s.logger.Info("Client authenticated:", conn.RemoteAddr(), "Node ID:", stmt.NodeID, "Tags:", stmt.Tags)
+	return stmt.NodeID, stmt.Tags, true
 }
 
 func (s *MessageServer) handleIncomingMessages(conn net.Conn) {

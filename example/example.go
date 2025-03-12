@@ -93,12 +93,18 @@ func runLoadTest(logger *logrus.Logger) {
 	if successfulRequests > 0 {
 		fmt.Printf("Average Latency: %v\n", totalLatency/time.Duration(successfulRequests))
 	}
-
-	<-time.After(1 * time.Minute)
 }
 
 func runClient(clientID int, logger *logrus.Logger) {
-	client := client.NewMessageClient(SERVER_ADDR, TOKEN, logger, 1, TIMEOUT)
+	client := client.NewMessageClient(&client.MessageConfig{
+		ServerAddr: SERVER_ADDR,
+		Token:      TOKEN,
+		NodeID:     fmt.Sprintf("client_%d", clientID),
+		Tags:       []string{"client"},
+		MaxConn:    10,
+		Timeout:    TIMEOUT,
+		Logger:     logger,
+	})
 	client.Connect()
 
 	for i := 0; i < MESSAGES_PER_CLIENT; i++ {

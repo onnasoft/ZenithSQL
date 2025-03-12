@@ -14,28 +14,43 @@ import (
 )
 
 type LoginStatement struct {
-	Timestamp uint64 `msgpack:"timestamp" json:"timestamp"`
-	NodeName  string `msgpack:"node_name" json:"node_name" valid:"required,alphanumunderscore"`
-	IsReplica bool   `msgpack:"is_replica" json:"is_replica"`
-	Hash      string `msgpack:"hash" json:"hash"`
+	Timestamp uint64   `msgpack:"timestamp" json:"timestamp"`
+	IsReplica bool     `msgpack:"is_replica" json:"is_replica"`
+	Hash      string   `msgpack:"hash" json:"hash"`
+	NodeName  string   `msgpack:"node_name" json:"node_name"`
+	NodeID    string   `msgpack:"node_id" json:"node_id"`
+	Tags      []string `msgpack:"tags" json:"tags"`
 }
 
-func NewLoginStatement(token, nodeName string, isReplica bool) (*LoginStatement, error) {
+func NewLoginStatement(token, nodeID, nodeName string, isReplica bool, tags []string) (*LoginStatement, error) {
 	if token == "" {
 		return nil, errors.New("token cannot be empty")
+	}
+	if nodeID == "" || !govalidator.Matches(nodeID, "^[a-zA-Z0-9_-]+$") {
+		return nil, errors.New("node ID must be alphanumeric with underscores or dashes")
 	}
 	if nodeName == "" || !govalidator.Matches(nodeName, "^[a-zA-Z0-9_]+$") {
 		return nil, errors.New("node name must be alphanumeric with underscores only")
 	}
+	if len(tags) == 0 {
+		return nil, errors.New("tags cannot be empty")
+	}
+	for _, tag := range tags {
+		if tag == "" || !govalidator.Matches(tag, "^[a-zA-Z0-9_-]+$") {
+			return nil, fmt.Errorf("invalid tag: %s", tag)
+		}
+	}
 
 	timestamp := uint64(time.Now().UnixNano())
-	hash := generateHash(token, timestamp, nodeName, isReplica)
+	hash := generateHash(token, timestamp, nodeID, isReplica, tags)
 
 	stmt := &LoginStatement{
 		Timestamp: timestamp,
-		NodeName:  nodeName,
 		IsReplica: isReplica,
 		Hash:      hash,
+		NodeName:  nodeName,
+		NodeID:    nodeID,
+		Tags:      tags,
 	}
 
 	if _, err := govalidator.ValidateStruct(stmt); err != nil {
@@ -46,13 +61,13 @@ func NewLoginStatement(token, nodeName string, isReplica bool) (*LoginStatement,
 }
 
 func (l *LoginStatement) ValidateHash(token string) bool {
-	expectedHash := generateHash(token, l.Timestamp, l.NodeName, l.IsReplica)
+	expectedHash := generateHash(token, l.Timestamp, l.NodeID, l.IsReplica, l.Tags)
 	return hmac.Equal([]byte(l.Hash), []byte(expectedHash))
 }
 
-func generateHash(token string, timestamp uint64, nodeName string, isReplica bool) string {
+func generateHash(token string, timestamp uint64, nodeID string, isReplica bool, tags []string) string {
 	h := hmac.New(sha256.New, []byte(token))
-	h.Write([]byte(fmt.Sprintf("%d|%s|%t", timestamp, nodeName, isReplica)))
+	h.Write([]byte(fmt.Sprintf("%d|%s|%t|%v", timestamp, nodeID, isReplica, tags)))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -69,5 +84,6 @@ func (l *LoginStatement) FromBytes(data []byte) error {
 }
 
 func (l *LoginStatement) String() string {
-	return fmt.Sprintf("LoginStatement{Timestamp: %d, NodeName: %s, IsReplica: %t}", l.Timestamp, l.NodeName, l.IsReplica)
+	return fmt.Sprintf("LoginStatement{Timestamp: %d, NodeID: %s, NodeName: %s, IsReplica: %t, Tags: %v}",
+		l.Timestamp, l.NodeID, l.NodeName, l.IsReplica, l.Tags)
 }

@@ -18,9 +18,48 @@ type MessageTask struct {
 	Connection net.Conn
 }
 
+type Node struct {
+	ID          string
+	Connections map[net.Conn]struct{}
+	Tags        map[string]struct{}
+	mu          sync.Mutex
+}
+
+func NewNode(id string, tags []string) *Node {
+	tagSet := make(map[string]struct{})
+	for _, tag := range tags {
+		tagSet[tag] = struct{}{}
+	}
+
+	return &Node{
+		ID:          id,
+		Connections: make(map[net.Conn]struct{}),
+		Tags:        tagSet,
+	}
+}
+
+func (n *Node) AddConnection(conn net.Conn) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.Connections[conn] = struct{}{}
+}
+
+func (n *Node) RemoveConnection(conn net.Conn) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	delete(n.Connections, conn)
+}
+
+func (n *Node) HasTag(tag string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	_, exists := n.Tags[tag]
+	return exists
+}
+
 type MessageServer struct {
 	listener       net.Listener
-	connections    map[net.Conn]struct{}
+	nodes          map[string]*Node
 	taskQueue      chan *MessageTask
 	responseMap    map[string]chan *transport.Message
 	port           int
@@ -43,7 +82,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		logger:         cfg.Logger,
 		messageHandler: cfg.Handler,
 		loginValidator: cfg.LoginValidator,
-		connections:    make(map[net.Conn]struct{}),
+		nodes:          make(map[string]*Node),
 		taskQueue:      make(chan *MessageTask),
 		responseMap:    make(map[string]chan *transport.Message),
 	}
@@ -51,11 +90,15 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 
 func (s *MessageServer) Start() error {
 	defer func() {
-		for conn := range s.connections {
-			conn.Close()
+		s.mu.Lock()
+		for _, node := range s.nodes {
+			for conn := range node.Connections {
+				conn.Close()
+			}
 		}
-		s.connections = make(map[net.Conn]struct{})
+		s.nodes = make(map[string]*Node)
 		close(s.taskQueue)
+		s.mu.Unlock()
 	}()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
@@ -98,24 +141,26 @@ func (s *MessageServer) SendToAll(message *transport.Message) []*MessageResponse
 	defer s.mu.Unlock()
 
 	var wg sync.WaitGroup
-	responseChan := make(chan *MessageResponse, len(s.connections))
+	responseChan := make(chan *MessageResponse, len(s.nodes))
 
-	wg.Add(len(s.connections))
-	for conn := range s.connections {
-		go func(c net.Conn) {
-			defer wg.Done()
-			response, err := s.SendMessage(c, message)
-			responseChan <- &MessageResponse{
-				Result: response,
-				Error:  err,
-			}
-		}(conn)
+	wg.Add(len(s.nodes))
+	for _, node := range s.nodes {
+		for conn := range node.Connections {
+			go func(c net.Conn) {
+				defer wg.Done()
+				response, err := s.SendMessage(c, message)
+				responseChan <- &MessageResponse{
+					Result: response,
+					Error:  err,
+				}
+			}(conn)
+		}
 	}
 
 	wg.Wait()
 	close(responseChan)
 
-	responses := make([]*MessageResponse, 0, len(s.connections))
+	responses := make([]*MessageResponse, 0, len(s.nodes))
 	for response := range responseChan {
 		responses = append(responses, response)
 	}
@@ -130,21 +175,43 @@ func (s *MessageServer) Stop() error {
 	return s.listener.Close()
 }
 
-func (s *MessageServer) GetRandomConnection() net.Conn {
+func (s *MessageServer) RegisterNode(id string, tags []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if len(s.connections) == 0 {
+	if _, exists := s.nodes[id]; !exists {
+		s.nodes[id] = NewNode(id, tags)
+	}
+}
+
+func (s *MessageServer) GetNodesByTag(tag string) []*Node {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var result []*Node
+	for _, node := range s.nodes {
+		if node.HasTag(tag) {
+			result = append(result, node)
+		}
+	}
+	return result
+}
+
+func (s *MessageServer) GetRandomNode() *Node {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.nodes) == 0 {
 		return nil
 	}
 
-	connections := make([]net.Conn, 0, len(s.connections))
-	for conn := range s.connections {
-		connections = append(connections, conn)
+	nodeList := make([]*Node, 0, len(s.nodes))
+	for _, node := range s.nodes {
+		nodeList = append(nodeList, node)
 	}
 
 	h := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return connections[h.Intn(len(connections))]
+	return nodeList[h.Intn(len(nodeList))]
 }
 
 func (s *MessageServer) SendSilentMessage(conn net.Conn, message *transport.Message) error {
@@ -182,12 +249,12 @@ func (s *MessageServer) closeConnection(conn net.Conn, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.connections[conn]; !exists {
-		return
+	for _, node := range s.nodes {
+		if _, exists := node.Connections[conn]; exists {
+			delete(node.Connections, conn)
+			conn.Close()
+			s.logger.Info("Connection closed:", conn.RemoteAddr(), " Reason:", reason)
+			return
+		}
 	}
-
-	conn.Close()
-	delete(s.connections, conn)
-
-	s.logger.Info("Connection closed:", conn.RemoteAddr(), " Reason:", reason)
 }

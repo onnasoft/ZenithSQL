@@ -23,6 +23,8 @@ type Connection struct {
 type MessageClient struct {
 	serverAddr  string
 	token       string
+	nodeID      string
+	tags        []string
 	logger      *logrus.Logger
 	responseMap map[string]chan *transport.Message
 	connections []*Connection
@@ -33,23 +35,36 @@ type MessageClient struct {
 	timeout     time.Duration
 }
 
-func NewMessageClient(serverAddr, token string, logger *logrus.Logger, maxConn int, timeout time.Duration) *MessageClient {
+type MessageConfig struct {
+	ServerAddr string
+	Token      string
+	NodeID     string
+	Tags       []string
+	MaxConn    int
+	Timeout    time.Duration
+	Logger     *logrus.Logger
+}
+
+func NewMessageClient(config *MessageConfig) *MessageClient {
 	return &MessageClient{
-		serverAddr:  serverAddr,
-		token:       token,
-		logger:      logger,
+		serverAddr:  config.ServerAddr,
+		token:       config.Token,
+		nodeID:      config.NodeID,
+		tags:        config.Tags,
+		logger:      config.Logger,
 		responseMap: make(map[string]chan *transport.Message),
-		maxConn:     maxConn,
+		maxConn:     config.MaxConn,
 		lastUsed:    -1,
-		timeout:     timeout,
+		timeout:     config.Timeout,
 	}
 }
 
 func (c *MessageClient) Connect() error {
-	c.logger.Info("Connecting to server at: ", c.serverAddr)
+	c.logger.Info("Connecting to server at:", c.serverAddr)
 
 	done := make(chan struct{})
 	c.wg.Add(c.maxConn)
+
 	go func() {
 		for i := 0; i < c.maxConn; i++ {
 			go c.startConnection()
@@ -104,7 +119,7 @@ func (c *MessageClient) startConnection() {
 }
 
 func (c *MessageClient) authenticate(conn *Connection) error {
-	stmt, _ := statement.NewLoginStatement(c.token, "client_node", false)
+	stmt, _ := statement.NewLoginStatement(c.token, c.nodeID, c.nodeID, false, c.tags)
 	loginMessage, _ := transport.NewMessage(protocol.Login, stmt)
 	response, err := c.sendMessage(conn, loginMessage)
 	if err != nil {
@@ -185,7 +200,7 @@ func (c *MessageClient) SendMessage(message *transport.Message) (*transport.Mess
 	return c.sendMessage(conn, message)
 }
 
-func (c *MessageClient) SendMessageToAll(message *transport.Message) {
+func (c *MessageClient) SendMessageToAll(message *transport.Message) []*transport.Message {
 	wg := sync.WaitGroup{}
 	wg.Add(len(c.connections))
 	messages := make([]*transport.Message, len(c.connections))
@@ -194,18 +209,20 @@ func (c *MessageClient) SendMessageToAll(message *transport.Message) {
 	for _, conn := range c.connections {
 		go func(conn *Connection) {
 			defer wg.Done()
-			message, err := c.sendMessage(conn, message)
+			response, err := c.sendMessage(conn, message)
 			if err != nil {
 				c.logger.Error("Failed to send message:", err)
 				return
 			}
 
 			mu.Lock()
-			messages = append(messages, message)
+			messages = append(messages, response)
 			mu.Unlock()
 		}(conn)
 	}
 	wg.Wait()
+
+	return messages
 }
 
 func (c *MessageClient) getAvailableConnection() *Connection {
@@ -246,12 +263,7 @@ func (c *MessageClient) listenForMessages(conn *Connection) {
 		if responseChan, exists := c.responseMap[messageID]; exists {
 			responseChan <- message
 		} else {
-			decoded := hex.EncodeToString(message.Header.MessageID[:])
-			c.logger.Warn(
-				"Received unexpected message: ",
-				decoded,
-				message.Header.MessageType,
-			)
+			c.logger.Warn("Received unexpected message:", message.Header.MessageType)
 		}
 		c.mu.Unlock()
 	}
@@ -277,35 +289,16 @@ func (c *MessageClient) readMessage(conn net.Conn) (*transport.MessageHeader, []
 }
 
 func (c *MessageClient) reconnect(conn *Connection) {
-	c.logger.Warn("Attempting to reconnect...")
-
-	for {
-		time.Sleep(3 * time.Second)
-
-		newConn, err := net.DialTimeout("tcp", c.serverAddr, c.timeout)
-		if err == nil {
-			c.logger.Info("Reconnected successfully!")
-			c.mu.Lock()
-			conn.conn = newConn
-			conn.active = true
-			c.mu.Unlock()
-			go c.listenForMessages(conn)
-			go c.sendPingPeriodically(conn)
-			return
-		}
-
-		c.logger.Warn("Reconnection failed, retrying...")
-	}
-}
-
-func (c *MessageClient) Close() {
+	conn.conn.Close()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for _, conn := range c.connections {
-		conn.conn.Close()
-		conn.active = false
-		close(conn.closeChan)
+	for i, s := range c.connections {
+		if s == conn {
+			c.connections = append(c.connections[:i], c.connections[i+1:]...)
+			break
+		}
 	}
-	c.connections = nil
+
+	go c.startConnection()
 }
