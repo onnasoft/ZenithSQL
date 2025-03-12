@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"net"
@@ -24,13 +25,15 @@ type MessageServer struct {
 	port           int
 	logger         *logrus.Logger
 	messageHandler func(net.Conn, *transport.Message)
+	loginValidator func(string) bool
 	mu             sync.Mutex
 }
 
 type ServerConfig struct {
-	Port    int
-	Handler func(net.Conn, *transport.Message)
-	Logger  *logrus.Logger
+	Port           int
+	Logger         *logrus.Logger
+	Handler        func(net.Conn, *transport.Message)
+	LoginValidator func(string) bool
 }
 
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
@@ -38,6 +41,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		port:           cfg.Port,
 		logger:         cfg.Logger,
 		messageHandler: cfg.Handler,
+		loginValidator: cfg.LoginValidator,
 		connections:    make(map[net.Conn]struct{}),
 		taskQueue:      make(chan *MessageTask),
 		responseMap:    make(map[string]chan *transport.Message),
@@ -140,4 +144,40 @@ func (s *MessageServer) GetRandomConnection() net.Conn {
 
 	h := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return connections[h.Intn(len(connections))]
+}
+
+func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
+	_, err := conn.Write(message.Serialize())
+	if err != nil {
+		return nil, err
+	}
+
+	messageID := hex.EncodeToString(message.Header.MessageID[:])
+
+	s.mu.Lock()
+	responseChan := make(chan *transport.Message, 1)
+	s.responseMap[messageID] = responseChan
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.responseMap, messageID)
+		s.mu.Unlock()
+	}()
+
+	select {
+	case response := <-responseChan:
+		return response, nil
+	case <-time.After(5 * time.Second):
+		return nil, net.ErrClosed
+	}
+}
+
+func (s *MessageServer) closeConnection(conn net.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	conn.Close()
+	delete(s.connections, conn)
+	s.logger.Info("Connection closed:", conn.RemoteAddr())
 }

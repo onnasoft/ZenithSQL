@@ -1,4 +1,4 @@
-package sqlparser
+package statement
 
 import (
 	"github.com/onnasoft/sql-parser/protocol"

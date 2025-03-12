@@ -3,6 +3,8 @@ package sqlparser
 import (
 	"errors"
 	"strings"
+
+	"github.com/onnasoft/sql-parser/statement"
 )
 
 type Parser struct{}
@@ -11,7 +13,7 @@ func NewParser() *Parser {
 	return &Parser{}
 }
 
-func (p *Parser) Parse(sql string) (Statement, error) {
+func (p *Parser) Parse(sql string) (statement.Statement, error) {
 	sql = strings.TrimSpace(sql)
 	if strings.HasPrefix(strings.ToUpper(sql), "DROP DATABASE") {
 		return p.parseDropDatabase(sql)

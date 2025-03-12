@@ -10,11 +10,17 @@ import (
 )
 
 func (s *MessageServer) handleConnection(conn net.Conn) {
+	s.logger.Info("New connection:", conn.RemoteAddr())
+
+	if !s.authenticateConnection(conn) {
+		s.logger.Warn("Authentication failed for:", conn.RemoteAddr())
+		conn.Close()
+		return
+	}
+
 	s.mu.Lock()
 	s.connections[conn] = struct{}{}
 	s.mu.Unlock()
-
-	s.logger.Info("New connection:", conn.RemoteAddr())
 
 	go s.handleIncomingMessages(conn)
 
@@ -25,11 +31,48 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 	}
 }
 
+func (s *MessageServer) authenticateConnection(conn net.Conn) bool {
+	conn.SetDeadline(time.Now().Add(10 * time.Second)) // 10s para autenticarse
+
+	headerBytes := make([]byte, transport.MessageHeaderSize)
+	if _, err := conn.Read(headerBytes); err != nil {
+		s.logger.Error("Error reading login header:", err)
+		return false
+	}
+
+	var header transport.MessageHeader
+	if err := header.Deserialize(headerBytes); err != nil {
+		s.logger.Error("Error deserializing login header:", err)
+		return false
+	}
+
+	if header.MessageType != protocol.Login {
+		s.logger.Warn("Invalid first message type from:", conn.RemoteAddr())
+		return false
+	}
+
+	body := make([]byte, header.BodySize)
+	if _, err := conn.Read(body); err != nil {
+		s.logger.Error("Error reading login body:", err)
+		return false
+	}
+
+	token := string(body)
+
+	if s.loginValidator != nil && !s.loginValidator(token) {
+		s.logger.Warn("Invalid token from:", conn.RemoteAddr())
+		return false
+	}
+
+	s.logger.Info("Client authenticated:", conn.RemoteAddr())
+	return true
+}
+
 func (s *MessageServer) handleIncomingMessages(conn net.Conn) {
 	defer s.closeConnection(conn)
 
 	for {
-		conn.SetDeadline(time.Now().Add(30 * time.Second)) // Timeout automático si no hay actividad
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 
 		headerBytes := make([]byte, transport.MessageHeaderSize)
 		if _, err := conn.Read(headerBytes); err != nil {
@@ -65,40 +108,4 @@ func (s *MessageServer) handleIncomingMessages(conn net.Conn) {
 		}
 		s.mu.Unlock()
 	}
-}
-
-func (s *MessageServer) SendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
-	_, err := conn.Write(message.Serialize())
-	if err != nil {
-		return nil, err
-	}
-
-	messageID := hex.EncodeToString(message.Header.MessageID[:])
-
-	s.mu.Lock()
-	responseChan := make(chan *transport.Message, 1)
-	s.responseMap[messageID] = responseChan
-	s.mu.Unlock()
-
-	defer func() {
-		s.mu.Lock()
-		delete(s.responseMap, messageID)
-		s.mu.Unlock()
-	}()
-
-	select {
-	case response := <-responseChan:
-		return response, nil
-	case <-time.After(5 * time.Second):
-		return nil, net.ErrClosed
-	}
-}
-
-func (s *MessageServer) closeConnection(conn net.Conn) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	conn.Close()
-	delete(s.connections, conn)
-	s.logger.Info("Connection closed:", conn.RemoteAddr())
 }

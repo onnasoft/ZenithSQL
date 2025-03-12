@@ -1,0 +1,51 @@
+package statement
+
+import (
+	"github.com/onnasoft/sql-parser/protocol"
+	"github.com/vmihailenco/msgpack/v5"
+)
+
+type CreateDatabaseStatement struct {
+	DatabaseName string `msgpack:"database_name" json:"database_name" valid:"required,alphanumunderscore"`
+}
+
+func (c *CreateDatabaseStatement) Protocol() protocol.MessageType {
+	return protocol.CreateDatabase
+}
+
+func (c *CreateDatabaseStatement) Serialize() ([]byte, error) {
+	msgpackBytes, err := msgpack.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+
+	length := len(msgpackBytes)
+	prefixedBytes := make([]byte, 4+length)
+	prefixedBytes[0] = byte(length >> 24)
+	prefixedBytes[1] = byte(length >> 16)
+	prefixedBytes[2] = byte(length >> 8)
+	prefixedBytes[3] = byte(length)
+
+	copy(prefixedBytes[4:], msgpackBytes)
+
+	return prefixedBytes, nil
+}
+
+func (c *CreateDatabaseStatement) Deserialize(data []byte) error {
+	if len(data) < 4 {
+		return NewInvalidMessagePackDataError()
+	}
+
+	length := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+
+	if len(data[4:]) != length {
+		return NewInvalidMessagePackDataError()
+	}
+
+	err := msgpack.Unmarshal(data[4:], c)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

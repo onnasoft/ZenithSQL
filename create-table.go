@@ -5,67 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onnasoft/sql-parser/protocol"
-	"github.com/vmihailenco/msgpack/v5"
+	"github.com/onnasoft/sql-parser/statement"
 )
 
-type CreateTableStatement struct {
-	TableName string             `msgpack:"table_name" json:"table_name"`
-	Columns   []ColumnDefinition `msgpack:"columns" json:"columns"`
-	Storage   string             `msgpack:"storage" json:"storage"`
-}
-
-type ColumnDefinition struct {
-	Name         string `msgpack:"name" json:"name"`
-	Type         string `msgpack:"type" json:"type"`
-	Length       int    `msgpack:"length" json:"length"`
-	PrimaryKey   bool   `msgpack:"primary_key" json:"primary_key"`
-	Index        bool   `msgpack:"index" json:"index"`
-	DefaultValue string `msgpack:"default_value" json:"default_value"`
-}
-
-func (c *CreateTableStatement) Protocol() protocol.MessageType {
-	return protocol.CreateTable
-}
-
-func (c *CreateTableStatement) Serialize() ([]byte, error) {
-	msgpackBytes, err := msgpack.Marshal(c)
-	if err != nil {
-		return nil, err
-	}
-
-	length := len(msgpackBytes)
-	prefixedBytes := make([]byte, 4+length)
-	prefixedBytes[0] = byte(length >> 24)
-	prefixedBytes[1] = byte(length >> 16)
-	prefixedBytes[2] = byte(length >> 8)
-	prefixedBytes[3] = byte(length)
-
-	copy(prefixedBytes[4:], msgpackBytes)
-
-	return prefixedBytes, nil
-}
-
-func (c *CreateTableStatement) Deserialize(data []byte) error {
-	if len(data) < 4 {
-		return NewInvalidMessagePackDataError()
-	}
-
-	length := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
-
-	if len(data[4:]) != length {
-		return NewInvalidMessagePackDataError()
-	}
-
-	err := msgpack.Unmarshal(data[4:], c)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (p *Parser) parseCreateTable(sql string) (*CreateTableStatement, error) {
+func (p *Parser) parseCreateTable(sql string) (*statement.CreateTableStatement, error) {
 	sql = cleanSQL(sql)
 
 	storage, sql, err := parseStorageOption(sql)
@@ -83,7 +26,7 @@ func (p *Parser) parseCreateTable(sql string) (*CreateTableStatement, error) {
 		return nil, err
 	}
 
-	return &CreateTableStatement{
+	return &statement.CreateTableStatement{
 		TableName: tableName,
 		Columns:   columnStatements,
 		Storage:   storage,
@@ -105,7 +48,7 @@ func parseStorageOption(sql string) (string, string, error) {
 		storage = strings.TrimSuffix(storage, ";")
 
 		if !isValidStorageOption(storage) {
-			return "", "", NewInvalidStorageOptionError(storage)
+			return "", "", statement.NewInvalidStorageOptionError(storage)
 		}
 	}
 	return storage, sql, nil
@@ -114,7 +57,7 @@ func parseStorageOption(sql string) (string, string, error) {
 func extractTableNameAndColumns(sql string) (string, string, error) {
 	parts := strings.SplitN(sql, "(", 2)
 	if len(parts) != 2 {
-		return "", "", NewInvalidCreateTableFormatError()
+		return "", "", statement.NewInvalidCreateTableFormatError()
 	}
 
 	tableName := strings.TrimSpace(parts[0])
@@ -123,9 +66,9 @@ func extractTableNameAndColumns(sql string) (string, string, error) {
 	return tableName, columnDefs, nil
 }
 
-func parseColumnDefinitions(columnDefs string) ([]ColumnDefinition, error) {
+func parseColumnDefinitions(columnDefs string) ([]statement.ColumnDefinition, error) {
 	columns := strings.Split(columnDefs, ",")
-	columnStatements := make([]ColumnDefinition, 0, len(columns))
+	columnStatements := make([]statement.ColumnDefinition, 0, len(columns))
 
 	for _, col := range columns {
 		col = strings.TrimSpace(col)
@@ -144,25 +87,25 @@ func parseColumnDefinitions(columnDefs string) ([]ColumnDefinition, error) {
 	return columnStatements, nil
 }
 
-func parseColumn(col string) (ColumnDefinition, error) {
+func parseColumn(col string) (statement.ColumnDefinition, error) {
 	colParts := strings.Fields(col)
 	if len(colParts) < 2 {
-		return ColumnDefinition{}, NewInvalidColumnFormatError()
+		return statement.ColumnDefinition{}, statement.NewInvalidColumnFormatError()
 	}
 
 	colName := colParts[0]
 	colType, length := parseColumnTypeAndLength(colParts[1])
 
 	if !isValidDataType(colType) {
-		return ColumnDefinition{}, NewInvalidDataTypeError(colType)
+		return statement.ColumnDefinition{}, statement.NewInvalidDataTypeError(colType)
 	}
 
 	primaryKey, index, defaultValue, err := parseColumnOptions(colParts[2:], colType)
 	if err != nil {
-		return ColumnDefinition{}, err
+		return statement.ColumnDefinition{}, err
 	}
 
-	return ColumnDefinition{
+	return statement.ColumnDefinition{
 		Name:         colName,
 		Type:         colType,
 		Length:       length,
@@ -200,7 +143,7 @@ func parseColumnOptions(options []string, colType string) (bool, bool, string, e
 			if i+1 < len(options) && strings.ToUpper(options[i+1]) == "KEY" {
 				primaryKey = true
 				if colType != "UUID" {
-					return false, false, "", NewInvalidPrimaryKeyTypeError()
+					return false, false, "", statement.NewInvalidPrimaryKeyTypeError()
 				}
 				i++
 			}
