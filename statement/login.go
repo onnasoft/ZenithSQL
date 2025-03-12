@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/onnasoft/sql-parser/protocol"
+	"github.com/onnasoft/ZenithSQL/protocol"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

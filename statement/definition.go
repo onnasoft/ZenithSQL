@@ -1,7 +1,7 @@
 package statement
 
 import (
-	"github.com/onnasoft/sql-parser/protocol"
+	"github.com/onnasoft/ZenithSQL/protocol"
 )
 
 type Statement interface {

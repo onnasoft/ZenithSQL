@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/onnasoft/sql-parser/protocol"
-	"github.com/onnasoft/sql-parser/statement"
+	"github.com/onnasoft/ZenithSQL/protocol"
+	"github.com/onnasoft/ZenithSQL/statement"
 )
 
 const (

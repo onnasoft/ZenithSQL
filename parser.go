@@ -1,10 +1,10 @@
-package sqlparser
+package ZenithSQL
 
 import (
 	"errors"
 	"strings"
 
-	"github.com/onnasoft/sql-parser/statement"
+	"github.com/onnasoft/ZenithSQL/statement"
 )
 
 type Parser struct{}

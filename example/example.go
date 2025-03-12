@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onnasoft/sql-parser/client"
-	"github.com/onnasoft/sql-parser/protocol"
-	"github.com/onnasoft/sql-parser/server"
-	"github.com/onnasoft/sql-parser/statement"
-	"github.com/onnasoft/sql-parser/transport"
+	"github.com/onnasoft/ZenithSQL/client"
+	"github.com/onnasoft/ZenithSQL/protocol"
+	"github.com/onnasoft/ZenithSQL/server"
+	"github.com/onnasoft/ZenithSQL/statement"
+	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/sirupsen/logrus"
 )
 

@@ -1,4 +1,4 @@
-module github.com/onnasoft/sql-parser
+module github.com/onnasoft/ZenithSQL
 
 go 1.24.0
 

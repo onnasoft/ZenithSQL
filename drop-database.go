@@ -1,10 +1,10 @@
-package sqlparser
+package ZenithSQL
 
 import (
 	"strings"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/onnasoft/sql-parser/statement"
+	"github.com/onnasoft/ZenithSQL/statement"
 )
 
 func (p *Parser) parseDropDatabase(sql string) (*statement.DropDatabaseStatement, error) {

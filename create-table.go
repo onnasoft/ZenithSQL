@@ -1,11 +1,11 @@
-package sqlparser
+package ZenithSQL
 
 import (
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/onnasoft/sql-parser/statement"
+	"github.com/onnasoft/ZenithSQL/statement"
 )
 
 func (p *Parser) parseCreateTable(sql string) (*statement.CreateTableStatement, error) {

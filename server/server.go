@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
@@ -8,53 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onnasoft/sql-parser/statement"
-	"github.com/onnasoft/sql-parser/transport"
+	"github.com/onnasoft/ZenithSQL/statement"
+	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/sirupsen/logrus"
 )
 
 type MessageTask struct {
 	Message    *transport.Message
 	Connection net.Conn
-}
-
-type Node struct {
-	ID          string
-	Connections map[net.Conn]struct{}
-	Tags        map[string]struct{}
-	mu          sync.Mutex
-}
-
-func NewNode(id string, tags []string) *Node {
-	tagSet := make(map[string]struct{})
-	for _, tag := range tags {
-		tagSet[tag] = struct{}{}
-	}
-
-	return &Node{
-		ID:          id,
-		Connections: make(map[net.Conn]struct{}),
-		Tags:        tagSet,
-	}
-}
-
-func (n *Node) AddConnection(conn net.Conn) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.Connections[conn] = struct{}{}
-}
-
-func (n *Node) RemoveConnection(conn net.Conn) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	delete(n.Connections, conn)
-}
-
-func (n *Node) HasTag(tag string) bool {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	_, exists := n.Tags[tag]
-	return exists
 }
 
 type MessageServer struct {
@@ -66,17 +28,22 @@ type MessageServer struct {
 	logger         *logrus.Logger
 	messageHandler func(net.Conn, *transport.Message)
 	loginValidator func(*statement.LoginStatement) bool
+	tlsConfig      *tls.Config
 	mu             sync.Mutex
 }
 
-type ServerConfig struct {
-	Port           int
-	Logger         *logrus.Logger
-	Handler        func(net.Conn, *transport.Message)
-	LoginValidator func(*statement.LoginStatement) bool
-}
-
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
+	var tlsConfig *tls.Config
+
+	if cfg.CertFile != "" && cfg.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		if err != nil {
+			cfg.Logger.Fatal("Failed to load TLS certificate:", err)
+		}
+		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+		cfg.Logger.Info("TLS enabled")
+	}
+
 	return &MessageServer{
 		port:           cfg.Port,
 		logger:         cfg.Logger,
@@ -85,6 +52,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		nodes:          make(map[string]*Node),
 		taskQueue:      make(chan *MessageTask),
 		responseMap:    make(map[string]chan *transport.Message),
+		tlsConfig:      tlsConfig,
 	}
 }
 
@@ -101,7 +69,15 @@ func (s *MessageServer) Start() error {
 		s.mu.Unlock()
 	}()
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	var listener net.Listener
+	var err error
+
+	if s.tlsConfig != nil {
+		listener, err = tls.Listen("tcp", fmt.Sprintf(":%d", s.port), s.tlsConfig)
+	} else {
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	}
+
 	if err != nil {
 		return err
 	}
