@@ -29,15 +29,6 @@ type MessageServer struct {
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
 	defer utils.RecoverFromPanic("NewMessageServer", cfg.Logger)
 
-	var tlsConfig *tls.Config
-	if cfg.CertFile != "" && cfg.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
-		if err != nil {
-			cfg.Logger.Fatal("Failed to load TLS certificate:", err)
-		}
-		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-	}
-
 	svr := &MessageServer{
 		port:           cfg.Port,
 		logger:         cfg.Logger,
@@ -45,7 +36,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		loginValidator: cfg.LoginValidator,
 		nodeManager:    nodes.NewNodeManager(cfg.Logger),
 		responseMap:    make(map[string]chan *transport.Message),
-		tlsConfig:      tlsConfig,
+		tlsConfig:      loadTLSConfig(cfg),
 	}
 
 	if cfg.Logger == nil {
