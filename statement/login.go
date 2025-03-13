@@ -19,6 +19,7 @@ type LoginStatement struct {
 	Hash      string   `msgpack:"hash" json:"hash"`
 	NodeName  string   `msgpack:"node_name" json:"node_name"`
 	NodeID    string   `msgpack:"node_id" json:"node_id"`
+	Address   string   `msgpack:"address" json:"address"`
 	Tags      []string `msgpack:"tags" json:"tags"`
 }
 

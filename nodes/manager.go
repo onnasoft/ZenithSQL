@@ -51,7 +51,14 @@ func (m *NodeManager) AddNode(stmt *statement.LoginStatement, role NodeRole) *No
 		tags[tag] = struct{}{}
 	}
 
-	node := NewNode(stmt.NodeID, role, tags, m.logger)
+	node := NewNode(&NodeConfig{
+		ID:      stmt.NodeID,
+		Role:    role,
+		Tags:    tags,
+		Address: stmt.Address,
+		Logger:  m.logger,
+	})
+	node.Address = stmt.Address
 	m.nodes[stmt.NodeID] = node
 
 	for _, tag := range stmt.Tags {
@@ -99,4 +106,11 @@ func (m *NodeManager) ClearAllNodes() {
 	for id := range m.nodes {
 		m.RemoveNode(id)
 	}
+}
+
+func (m *NodeManager) GetMasters() map[string]*Node {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.masters
 }

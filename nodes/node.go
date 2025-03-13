@@ -22,17 +22,26 @@ type Node struct {
 	mu          sync.Mutex
 	logger      *logrus.Logger
 	Tags        map[string]struct{}
+	Address     string
 }
 
-func NewNode(id string, role NodeRole, tags map[string]struct{}, logger *logrus.Logger) *Node {
+type NodeConfig struct {
+	ID      string
+	Role    NodeRole
+	Tags    map[string]struct{}
+	Address string
+	Logger  *logrus.Logger
+}
+
+func NewNode(config *NodeConfig) *Node {
 	return &Node{
-		ID:          id,
-		Role:        role,
+		ID:          config.ID,
+		Role:        config.Role,
 		Connections: make(map[net.Conn]struct{}),
-		Replicas:    []net.Conn{},
-		logger:      logger,
-		Tags:        tags,
-		mu:          sync.Mutex{},
+		Replicas:    make([]net.Conn, 0),
+		logger:      config.Logger,
+		Tags:        config.Tags,
+		Address:     config.Address,
 	}
 }
 
