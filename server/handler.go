@@ -13,15 +13,16 @@ import (
 func (s *MessageServer) handleConnection(conn net.Conn) {
 	defer utils.RecoverFromPanic("handleConnection", s.logger)
 
-	nodeID, authenticated := s.authenticateConnection(conn)
+	stmt, authenticated := s.authenticateConnection(conn)
 	if !authenticated {
 		s.logger.Warn("Authentication failed for: ", conn.RemoteAddr())
 		conn.Close()
 		return
 	}
+	loginStmt := stmt.(*statement.LoginStatement)
 
-	handler := network.NewNodeConnection(conn, nodeID, s.logger)
-	s.registerNode(nodeID, handler)
+	handler := network.NewNodeConnection(conn, loginStmt.NodeID, s.logger)
+	s.registerNode(loginStmt, handler)
 	s.processMessage(handler)
 }
 
@@ -71,20 +72,20 @@ func (s *MessageServer) handlePing(conn net.Conn, message *transport.Message) bo
 	return true
 }
 
-func (s *MessageServer) authenticateConnection(conn net.Conn) (string, bool) {
+func (s *MessageServer) authenticateConnection(conn net.Conn) (statement.Statement, bool) {
 	defer utils.RecoverFromPanic("authenticateConnection", s.logger)
 	message := new(transport.Message)
 
 	if err := message.ReadFrom(conn); err != nil {
 		s.logger.Warn("Failed to read message, error: ", err)
-		return "", false
+		return nil, false
 	}
 
 	stmt := message.Stmt.(*statement.LoginStatement)
 
 	if s.loginValidator != nil && !s.loginValidator(stmt) {
 		s.logger.Warn("Invalid token for node:", stmt.NodeID, "from:", conn.RemoteAddr())
-		return "", false
+		return nil, false
 	}
 
 	response, _ := transport.NewMessage(protocol.Login, statement.NewEmptyStatement(protocol.Login))
@@ -94,8 +95,8 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) (string, bool) {
 	_, err := conn.Write(response.ToBytes())
 	if err != nil {
 		s.logger.Warn("Failed to send login response to:", conn.RemoteAddr())
-		return "", false
+		return nil, false
 	}
 
-	return stmt.NodeID, true
+	return stmt, true
 }

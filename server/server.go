@@ -81,19 +81,19 @@ func (s *MessageServer) Start() error {
 	}
 }
 
-func (s *MessageServer) registerNode(nodeID string, conn net.Conn) {
+func (s *MessageServer) registerNode(stmt *statement.LoginStatement, conn net.Conn) {
 	defer utils.RecoverFromPanic("registerNode", s.logger)
 
 	var role nodes.NodeRole
-	if strings.Contains(nodeID, "master") {
+	if strings.Contains(stmt.NodeID, "master") {
 		role = nodes.Master
 	} else {
 		role = nodes.Slave
 	}
 
-	node := s.nodeManager.GetNode(nodeID)
+	node := s.nodeManager.GetNode(stmt.NodeID)
 	if node == nil {
-		node = s.nodeManager.AddNode(nodeID, role)
+		node = s.nodeManager.AddNode(stmt, role)
 	}
 	node.AddConnection(conn)
 }

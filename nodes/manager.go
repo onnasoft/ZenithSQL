@@ -3,23 +3,26 @@ package nodes
 import (
 	"sync"
 
+	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/sirupsen/logrus"
 )
 
 type NodeManager struct {
-	nodes   map[string]*Node
-	masters map[string]*Node
-	slaves  map[string]*Node
-	mu      sync.RWMutex
-	logger  *logrus.Logger
+	nodes       map[string]*Node
+	masters     map[string]*Node
+	slaves      map[string]*Node
+	taggedNodes map[string]map[string]*Node
+	mu          sync.RWMutex
+	logger      *logrus.Logger
 }
 
 func NewNodeManager(logger *logrus.Logger) *NodeManager {
 	return &NodeManager{
-		nodes:   make(map[string]*Node),
-		masters: make(map[string]*Node),
-		slaves:  make(map[string]*Node),
-		logger:  logger,
+		nodes:       make(map[string]*Node),
+		masters:     make(map[string]*Node),
+		slaves:      make(map[string]*Node),
+		taggedNodes: make(map[string]map[string]*Node),
+		logger:      logger,
 	}
 }
 
@@ -35,21 +38,33 @@ func (m *NodeManager) GetNode(id string) *Node {
 	return node
 }
 
-func (m *NodeManager) AddNode(id string, role NodeRole) *Node {
+func (m *NodeManager) AddNode(stmt *statement.LoginStatement, role NodeRole) *Node {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if node, exists := m.nodes[id]; exists {
+	if node, exists := m.nodes[stmt.NodeID]; exists {
 		return node
 	}
 
-	node := NewNode(id, role, m.logger)
-	m.nodes[id] = node
+	tags := make(map[string]struct{})
+	for _, tag := range stmt.Tags {
+		tags[tag] = struct{}{}
+	}
+
+	node := NewNode(stmt.NodeID, role, tags, m.logger)
+	m.nodes[stmt.NodeID] = node
+
+	for _, tag := range stmt.Tags {
+		if _, exists := m.taggedNodes[tag]; !exists {
+			m.taggedNodes[tag] = make(map[string]*Node)
+		}
+		m.taggedNodes[tag][stmt.NodeID] = node
+	}
 
 	if role == Master {
-		m.masters[id] = node
+		m.masters[stmt.NodeID] = node
 	} else {
-		m.slaves[id] = node
+		m.slaves[stmt.NodeID] = node
 	}
 
 	return node
