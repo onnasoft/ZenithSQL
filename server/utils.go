@@ -1,8 +1,9 @@
 package server
 
-import "github.com/onnasoft/ZenithSQL/transport"
+import "fmt"
 
-type MessageResponse struct {
-	Result *transport.Message
-	Error  error
+func recoverFromPanic(funcName string, s *MessageServer) {
+	if r := recover(); r != nil {
+		s.logger.Fatal(fmt.Sprintf("[PANIC] Recovered in %s: %v", funcName, r))
+	}
 }

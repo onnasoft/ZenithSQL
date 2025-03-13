@@ -1,0 +1,91 @@
+package server
+
+import (
+	"net"
+
+	"github.com/onnasoft/ZenithSQL/network"
+	"github.com/onnasoft/ZenithSQL/protocol"
+	"github.com/onnasoft/ZenithSQL/statement"
+	"github.com/onnasoft/ZenithSQL/transport"
+)
+
+func (s *MessageServer) handleConnection(conn net.Conn) {
+	defer recoverFromPanic("handleConnection", s)
+	defer conn.Close()
+
+	nodeID, _, authenticated := s.authenticateConnection(conn)
+	if !authenticated {
+		s.logger.Warn("Authentication failed for: ", conn.RemoteAddr())
+		conn.Close()
+		return
+	}
+
+	handler := network.NewConnection(conn, nodeID, s.logger)
+	s.registerNode(nodeID, handler)
+
+	for {
+		message := new(transport.Message)
+		if err := message.ReadFrom(conn); err != nil {
+			s.logger.Warn("Failed to read message from: ", conn.RemoteAddr(), " Error: ", err)
+			break
+		}
+
+		if s.handlePing(handler, message) {
+			continue
+		}
+
+		s.handler(conn, message)
+	}
+}
+
+func (s *MessageServer) handler(conn net.Conn, message *transport.Message) {
+	defer recoverFromPanic("handler", s)
+
+	if s.messageHandler != nil {
+		s.messageHandler(conn, message)
+		return
+	}
+}
+
+func (s *MessageServer) handlePing(conn net.Conn, message *transport.Message) bool {
+	defer recoverFromPanic("handlePing", s)
+
+	if message.Header.MessageType != protocol.Ping {
+		return false
+	}
+
+	response, _ := transport.NewMessage(protocol.Pong, statement.NewEmptyStatement(protocol.Pong))
+	response.Header.MessageID = message.Header.MessageID
+	conn.Write(response.ToBytes())
+
+	return true
+}
+
+func (s *MessageServer) authenticateConnection(conn net.Conn) (string, []string, bool) {
+	defer recoverFromPanic("authenticateConnection", s)
+	message := new(transport.Message)
+
+	if err := message.ReadFrom(conn); err != nil {
+		s.logger.Warn("Failed to read message, error: ", err)
+		return "", nil, false
+	}
+
+	stmt := message.Stmt.(*statement.LoginStatement)
+
+	if s.loginValidator != nil && !s.loginValidator(stmt) {
+		s.logger.Warn("Invalid token for node:", stmt.NodeID, "from:", conn.RemoteAddr())
+		return "", nil, false
+	}
+
+	response, _ := transport.NewMessage(protocol.Login, statement.NewEmptyStatement(protocol.Login))
+	response.Header.MessageID = message.Header.MessageID
+	response.Header.Timestamp = message.Header.Timestamp
+
+	_, err := conn.Write(response.ToBytes())
+	if err != nil {
+		s.logger.Warn("Failed to send login response to:", conn.RemoteAddr())
+		return "", nil, false
+	}
+
+	return stmt.NodeID, stmt.Tags, true
+}

@@ -3,6 +3,7 @@ package transport
 import (
 	"encoding/binary"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,7 +34,16 @@ type MessageHeader struct {
 	EndMarker   uint32
 }
 
-func (h *MessageHeader) Serialize() []byte {
+func (h *MessageHeader) ReadFrom(conn net.Conn) error {
+	headerBytes := make([]byte, MessageHeaderSize)
+	if _, err := conn.Read(headerBytes); err != nil {
+		return err
+	}
+
+	return h.FromBytes(headerBytes)
+}
+
+func (h *MessageHeader) ToBytes() []byte {
 	bytes := make([]byte, MessageHeaderSize)
 
 	binary.BigEndian.PutUint32(bytes[StartMarkerOffset:MessageIDOffset], h.StartMarker)
@@ -46,7 +56,7 @@ func (h *MessageHeader) Serialize() []byte {
 	return bytes
 }
 
-func (h *MessageHeader) Deserialize(bytes []byte) error {
+func (h *MessageHeader) FromBytes(bytes []byte) error {
 	if len(bytes) != MessageHeaderSize {
 		return fmt.Errorf("header size must be %v bytes, got %v", MessageHeaderSize, len(bytes))
 	}
@@ -94,6 +104,29 @@ func NewMessage(messageType protocol.MessageType, stmt statement.Statement) (*Me
 	}, nil
 }
 
+func (m *Message) ReadFrom(conn net.Conn) error {
+	if m.Header == nil {
+		m.Header = &MessageHeader{}
+	}
+
+	if err := m.Header.ReadFrom(conn); err != nil {
+		return err
+	}
+
+	m.Body = make([]byte, m.Header.BodySize)
+	if _, err := conn.Read(m.Body); err != nil {
+		return err
+	}
+
+	stmt, err := statement.DeserializeStatement(m.Header.MessageType, m.Body)
+	if err != nil {
+		return err
+	}
+
+	m.Stmt = stmt
+	return nil
+}
+
 func ParseStatement(header *MessageHeader, body []byte) (*Message, error) {
 	stmt, err := statement.DeserializeStatement(header.MessageType, body)
 	if err != nil {
@@ -107,17 +140,17 @@ func ParseStatement(header *MessageHeader, body []byte) (*Message, error) {
 	}, nil
 }
 
-func (m *Message) Serialize() []byte {
-	headerBytes := m.Header.Serialize()
+func (m *Message) ToBytes() []byte {
+	headerBytes := m.Header.ToBytes()
 	return append(headerBytes, m.Body...)
 }
 
-func (m *Message) Deserialize(bytes []byte) error {
+func (m *Message) FromBytes(bytes []byte) error {
 	if len(bytes) < MessageHeaderSize {
 		return fmt.Errorf("message size too small")
 	}
 
-	if err := m.Header.Deserialize(bytes[:MessageHeaderSize]); err != nil {
+	if err := m.Header.FromBytes(bytes[:MessageHeaderSize]); err != nil {
 		return err
 	}
 

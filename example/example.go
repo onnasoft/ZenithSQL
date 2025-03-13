@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -15,9 +16,9 @@ import (
 )
 
 const (
-	NUM_CLIENTS                = 1
-	NUM_CONNECTIONS_PER_CLIENT = 1
-	MESSAGES_PER_CLIENT        = 1
+	NUM_CLIENTS                = 100
+	NUM_CONNECTIONS_PER_CLIENT = 10
+	MESSAGES_PER_CLIENT        = 30000
 	TIMEOUT                    = 3 * time.Second
 	SERVER_ADDR                = "127.0.0.1:8081"
 	TOKEN                      = "my-secure-token"
@@ -33,23 +34,20 @@ var (
 func main() {
 	logger := logrus.New()
 
-	var svr *server.MessageServer
-
-	svr = server.NewMessageServer(&server.ServerConfig{
+	svr := server.NewMessageServer(&server.ServerConfig{
 		Port:   8081,
 		Logger: logger,
-		Handler: func(conn *server.ConnectionHandler, message *transport.Message) {
+		Handler: func(conn net.Conn, message *transport.Message) {
 			msg, _ := transport.NewMessage(message.Stmt.Protocol(), statement.NewEmptyStatement(message.Stmt.Protocol()))
 			msg.Header.MessageID = message.Header.MessageID
 			msg.Header.MessageType = message.Header.MessageType
 
-			err := svr.SendSilentMessage(conn, msg)
+			_, err := conn.Write(msg.ToBytes())
 			if err != nil {
 				logger.Info("Failed to send response:", err)
 			}
 		},
 		LoginValidator: func(stmt *statement.LoginStatement) bool {
-			logger.Info("Validating login statement: ", stmt)
 			return stmt.ValidateHash(TOKEN)
 		},
 	})
@@ -115,9 +113,8 @@ func runClient(clientID int, logger *logrus.Logger) {
 			DatabaseName: fmt.Sprintf("test_db_%d_%d", clientID, i),
 		})
 
-		msg, err := client.SendMessage(msg)
+		_, err := client.SendMessage(msg)
 		elapsed := time.Since(startTime)
-		logger.Info("msg:", msg, "err:", err, "elapsed:", elapsed)
 
 		mu.Lock()
 		if err != nil {

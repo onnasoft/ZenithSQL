@@ -47,6 +47,10 @@ type MessageConfig struct {
 }
 
 func NewMessageClient(config *MessageConfig) *MessageClient {
+	maxConn := config.MaxConn
+	if maxConn <= 0 {
+		maxConn = 1
+	}
 	return &MessageClient{
 		serverAddr:  config.ServerAddr,
 		token:       config.Token,
@@ -54,7 +58,7 @@ func NewMessageClient(config *MessageConfig) *MessageClient {
 		tags:        config.Tags,
 		logger:      config.Logger,
 		responseMap: make(map[string]chan *transport.Message),
-		maxConn:     config.MaxConn,
+		maxConn:     maxConn,
 		lastUsed:    -1,
 		timeout:     config.Timeout,
 	}
@@ -171,7 +175,7 @@ func (c *MessageClient) sendMessage(conn *Connection, message *transport.Message
 	c.responseMap[messageID] = responseChan
 	c.mu.Unlock()
 
-	_, err := conn.conn.Write(message.Serialize())
+	_, err := conn.conn.Write(message.ToBytes())
 	if err != nil {
 		c.mu.Lock()
 		delete(c.responseMap, messageID)
@@ -227,7 +231,7 @@ func (c *MessageClient) readMessage(conn net.Conn) (*transport.MessageHeader, []
 	}
 
 	header := &transport.MessageHeader{}
-	if err := header.Deserialize(headerBytes); err != nil {
+	if err := header.FromBytes(headerBytes); err != nil {
 		return nil, nil, err
 	}
 
@@ -254,6 +258,8 @@ func (c *MessageClient) listenForMessages(conn *Connection) {
 			c.closeConnection(conn)
 			return
 		}
+
+		c.logger.Debug("Received message:", message.Header.MessageType)
 
 		messageID := hex.EncodeToString(message.Header.MessageID[:])
 
