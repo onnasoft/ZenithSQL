@@ -8,18 +8,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/protocol"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/sirupsen/logrus"
 )
-
-type Connection struct {
-	conn      net.Conn
-	active    bool
-	closeChan chan struct{}
-	mu        sync.Mutex
-}
 
 type MessageClient struct {
 	serverAddr  string
@@ -28,7 +22,7 @@ type MessageClient struct {
 	tags        []string
 	logger      *logrus.Logger
 	responseMap map[string]chan *transport.Message
-	connections []*Connection
+	connections []net.Conn
 	mu          sync.Mutex
 	maxConn     int
 	lastUsed    int
@@ -95,22 +89,17 @@ func (c *MessageClient) startConnection() {
 			continue
 		}
 
-		newConn := &Connection{
-			conn:      conn,
-			active:    true,
-			closeChan: make(chan struct{}),
-		}
-
+		nconn := network.NewConnection(conn, c.logger)
 		c.mu.Lock()
-		c.connections = append(c.connections, newConn)
+		c.connections = append(c.connections, nconn)
 		c.mu.Unlock()
 
-		go c.listenForMessages(newConn)
-		go c.managePings(newConn)
+		go c.listenForMessages(nconn)
+		go c.managePings(nconn)
 
-		if err := c.authenticate(newConn); err != nil {
+		if err := c.authenticate(nconn); err != nil {
 			c.logger.Error("Failed to authenticate connection: ", err)
-			c.closeConnection(newConn)
+			c.closeConnection(nconn)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -119,7 +108,7 @@ func (c *MessageClient) startConnection() {
 	}
 }
 
-func (c *MessageClient) authenticate(conn *Connection) error {
+func (c *MessageClient) authenticate(conn net.Conn) error {
 	stmt, _ := statement.NewLoginStatement(c.token, c.nodeID, c.nodeID, false, c.tags)
 	loginMessage, _ := transport.NewMessage(protocol.Login, stmt)
 	response, err := c.sendMessage(conn, loginMessage)
@@ -134,40 +123,30 @@ func (c *MessageClient) authenticate(conn *Connection) error {
 	return nil
 }
 
-func (c *MessageClient) managePings(conn *Connection) {
+func (c *MessageClient) managePings(conn net.Conn) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			conn.mu.Lock()
-			if !conn.active {
-				conn.mu.Unlock()
-				return
-			}
-			conn.mu.Unlock()
-
 			pingMessage, _ := transport.NewMessage(protocol.Ping, statement.NewEmptyStatement(protocol.Ping))
 			response, err := c.SendMessage(pingMessage)
 
-			conn.mu.Lock()
 			if err != nil || response.Header.MessageType != protocol.Pong {
 				c.logger.Warn("Ping failed, marking connection inactive...")
-				conn.active = false
-				conn.mu.Unlock()
+				c.closeConnection(conn)
 				c.reconnect(conn)
 				return
 			}
-			conn.mu.Unlock()
 
-		case <-conn.closeChan:
+		case <-c.closeChan(conn):
 			return
 		}
 	}
 }
 
-func (c *MessageClient) sendMessage(conn *Connection, message *transport.Message) (*transport.Message, error) {
+func (c *MessageClient) sendMessage(conn net.Conn, message *transport.Message) (*transport.Message, error) {
 	messageID := hex.EncodeToString(message.Header.MessageID[:])
 	responseChan := make(chan *transport.Message, 1)
 
@@ -175,7 +154,7 @@ func (c *MessageClient) sendMessage(conn *Connection, message *transport.Message
 	c.responseMap[messageID] = responseChan
 	c.mu.Unlock()
 
-	_, err := conn.conn.Write(message.ToBytes())
+	_, err := conn.Write(message.ToBytes())
 	if err != nil {
 		c.mu.Lock()
 		delete(c.responseMap, messageID)
@@ -208,51 +187,21 @@ func (c *MessageClient) SendMessage(message *transport.Message) (*transport.Mess
 	return c.sendMessage(conn, message)
 }
 
-func (c *MessageClient) getAvailableConnection() *Connection {
+func (c *MessageClient) getAvailableConnection() net.Conn {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	for _, conn := range c.connections {
-		conn.mu.Lock()
-		if conn.active {
-			conn.mu.Unlock()
-			return conn
-		}
-		conn.mu.Unlock()
+		return conn
 	}
 
 	return nil
 }
 
-func (c *MessageClient) readMessage(conn net.Conn) (*transport.MessageHeader, []byte, error) {
-	headerBytes := make([]byte, transport.MessageHeaderSize)
-	if _, err := conn.Read(headerBytes); err != nil {
-		return nil, nil, err
-	}
-
-	header := &transport.MessageHeader{}
-	if err := header.FromBytes(headerBytes); err != nil {
-		return nil, nil, err
-	}
-
-	body := make([]byte, header.BodySize)
-	if _, err := conn.Read(body); err != nil {
-		return nil, nil, err
-	}
-
-	return header, body, nil
-}
-
-func (c *MessageClient) listenForMessages(conn *Connection) {
+func (c *MessageClient) listenForMessages(conn net.Conn) {
 	for {
-		header, body, err := c.readMessage(conn.conn)
-		if err != nil {
-			c.logger.Error("Error reading message: ", err)
-			c.closeConnection(conn)
-			return
-		}
-
-		message, err := transport.ParseStatement(header, body)
+		message := new(transport.Message)
+		err := message.ReadFrom(conn)
 		if err != nil {
 			c.logger.Error("Error parsing message: ", err)
 			c.closeConnection(conn)
@@ -277,8 +226,8 @@ func (c *MessageClient) listenForMessages(conn *Connection) {
 	}
 }
 
-func (c *MessageClient) closeConnection(conn *Connection) {
-	conn.conn.Close()
+func (c *MessageClient) closeConnection(conn net.Conn) {
+	conn.Close()
 
 	c.mu.Lock()
 	for i, s := range c.connections {
@@ -290,7 +239,22 @@ func (c *MessageClient) closeConnection(conn *Connection) {
 	c.mu.Unlock()
 }
 
-func (c *MessageClient) reconnect(conn *Connection) {
+func (c *MessageClient) reconnect(conn net.Conn) {
 	c.closeConnection(conn)
 	go c.startConnection()
+}
+
+func (c *MessageClient) closeChan(conn net.Conn) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		for _, c := range c.connections {
+			if c == conn {
+				return
+			}
+		}
+		close(ch)
+	}()
+	return ch
 }

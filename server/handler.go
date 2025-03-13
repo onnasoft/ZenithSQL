@@ -20,7 +20,7 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 		return
 	}
 
-	handler := network.NewConnection(conn, nodeID, s.logger)
+	handler := network.NewNodeConnection(conn, nodeID, s.logger)
 	s.registerNode(nodeID, handler)
 
 	for {
@@ -30,15 +30,19 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 			break
 		}
 
-		if s.handlePing(handler, message) {
-			continue
-		}
-
-		s.handler(conn, message)
+		go s.handler(conn, message)
 	}
 }
 
 func (s *MessageServer) handler(conn net.Conn, message *transport.Message) {
+	if s.handlePing(conn, message) {
+		return
+	}
+
+	s.handlerMessage(conn, message)
+}
+
+func (s *MessageServer) handlerMessage(conn net.Conn, message *transport.Message) {
 	defer recoverFromPanic("handler", s)
 
 	if s.messageHandler != nil {

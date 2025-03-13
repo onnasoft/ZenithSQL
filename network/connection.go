@@ -16,14 +16,21 @@ type Connection struct {
 	logger    *logrus.Logger
 }
 
-func NewConnection(conn net.Conn, nodeID string, logger *logrus.Logger) *Connection {
+func NewConnection(conn net.Conn, logger *logrus.Logger) *Connection {
 	c := &Connection{
 		Conn:      conn,
-		NodeID:    nodeID,
 		sendQueue: make(chan []byte, 100),
 		closeChan: make(chan struct{}),
 		logger:    logger,
 	}
+
+	go c.startWriter()
+	return c
+}
+
+func NewNodeConnection(conn net.Conn, nodeID string, logger *logrus.Logger) *Connection {
+	c := NewConnection(conn, logger)
+	c.NodeID = nodeID
 
 	go c.startWriter()
 	return c
