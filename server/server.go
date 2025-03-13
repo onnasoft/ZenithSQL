@@ -10,6 +10,7 @@ import (
 	"github.com/onnasoft/ZenithSQL/nodes"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
+	"github.com/onnasoft/ZenithSQL/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,7 +27,7 @@ type MessageServer struct {
 }
 
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
-	defer recoverFromPanic("NewMessageServer", nil)
+	defer utils.RecoverFromPanic("NewMessageServer", cfg.Logger)
 
 	var tlsConfig *tls.Config
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
@@ -55,7 +56,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 }
 
 func (s *MessageServer) Start() error {
-	defer recoverFromPanic("Start", s)
+	defer utils.RecoverFromPanic("Start", s.logger)
 
 	defer func() {
 		s.mu.Lock()
@@ -90,7 +91,7 @@ func (s *MessageServer) Start() error {
 }
 
 func (s *MessageServer) registerNode(nodeID string, conn net.Conn) {
-	defer recoverFromPanic("registerNode", s)
+	defer utils.RecoverFromPanic("registerNode", s.logger)
 
 	var role nodes.NodeRole
 	if strings.Contains(nodeID, "master") {

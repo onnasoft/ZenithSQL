@@ -7,10 +7,11 @@ import (
 	"github.com/onnasoft/ZenithSQL/protocol"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
+	"github.com/onnasoft/ZenithSQL/utils"
 )
 
 func (s *MessageServer) handleConnection(conn net.Conn) {
-	defer recoverFromPanic("handleConnection", s)
+	defer utils.RecoverFromPanic("handleConnection", s.logger)
 	defer conn.Close()
 
 	nodeID, _, authenticated := s.authenticateConnection(conn)
@@ -43,7 +44,7 @@ func (s *MessageServer) handler(conn net.Conn, message *transport.Message) {
 }
 
 func (s *MessageServer) handlerMessage(conn net.Conn, message *transport.Message) {
-	defer recoverFromPanic("handler", s)
+	defer utils.RecoverFromPanic("handler", s.logger)
 
 	if s.messageHandler != nil {
 		s.messageHandler(conn, message)
@@ -52,7 +53,7 @@ func (s *MessageServer) handlerMessage(conn net.Conn, message *transport.Message
 }
 
 func (s *MessageServer) handlePing(conn net.Conn, message *transport.Message) bool {
-	defer recoverFromPanic("handlePing", s)
+	defer utils.RecoverFromPanic("handlePing", s.logger)
 
 	if message.Header.MessageType != protocol.Ping {
 		return false
@@ -66,7 +67,7 @@ func (s *MessageServer) handlePing(conn net.Conn, message *transport.Message) bo
 }
 
 func (s *MessageServer) authenticateConnection(conn net.Conn) (string, []string, bool) {
-	defer recoverFromPanic("authenticateConnection", s)
+	defer utils.RecoverFromPanic("authenticateConnection", s.logger)
 	message := new(transport.Message)
 
 	if err := message.ReadFrom(conn); err != nil {

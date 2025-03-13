@@ -18,7 +18,7 @@ import (
 const (
 	NUM_CLIENTS                = 100
 	NUM_CONNECTIONS_PER_CLIENT = 10
-	MESSAGES_PER_CLIENT        = 30000
+	MESSAGES_PER_CLIENT        = 50000
 	TIMEOUT                    = 3 * time.Second
 	SERVER_ADDR                = "127.0.0.1:8081"
 	TOKEN                      = "my-secure-token"
