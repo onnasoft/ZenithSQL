@@ -21,9 +21,13 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 	}
 
 	handler := network.NewNodeConnection(conn, nodeID, s.logger)
-	defer handler.Close()
-
 	s.registerNode(nodeID, handler)
+	s.processMessage(handler)
+}
+
+func (s *MessageServer) processMessage(conn net.Conn) {
+	defer utils.RecoverFromPanic("processMessage", s.logger)
+	defer conn.Close()
 
 	for {
 		message := new(transport.Message)
