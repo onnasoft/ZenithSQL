@@ -1,6 +1,7 @@
 package client
 
 import (
+	"container/heap"
 	"errors"
 	"sync"
 	"time"
@@ -15,6 +16,33 @@ import (
 type ConnectionPool struct {
 	conn      *network.ZenithConnection
 	loanCount int
+	index     int
+}
+
+type PriorityQueue []*ConnectionPool
+
+func (pq PriorityQueue) Len() int           { return len(pq) }
+func (pq PriorityQueue) Less(i, j int) bool { return pq[i].loanCount < pq[j].loanCount }
+func (pq PriorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].index, pq[j].index = i, j
+}
+
+func (pq *PriorityQueue) Push(x interface{}) {
+	n := len(*pq)
+	item := x.(*ConnectionPool)
+	item.index = n
+	*pq = append(*pq, item)
+}
+
+func (pq *PriorityQueue) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	item.index = -1
+	*pq = old[0 : n-1]
+	return item
 }
 
 type MessageClient struct {
@@ -23,12 +51,11 @@ type MessageClient struct {
 	nodeID      string
 	tags        []string
 	logger      *logrus.Logger
-	connections []*ConnectionPool
+	connections PriorityQueue
 	mu          sync.Mutex
 	maxConn     int
 	minConn     int
 	timeout     time.Duration
-	lastUsed    int
 }
 
 type MessageConfig struct {
@@ -60,13 +87,13 @@ func NewMessageClient(config *MessageConfig) *MessageClient {
 		nodeID:      config.NodeID,
 		tags:        config.Tags,
 		logger:      config.Logger,
-		connections: make([]*ConnectionPool, 0, maxConn),
+		connections: make(PriorityQueue, 0, maxConn),
 		minConn:     minConn,
 		maxConn:     maxConn,
 		timeout:     config.Timeout,
-		lastUsed:    -1,
 	}
 
+	heap.Init(&client.connections)
 	client.initConnections()
 	return client
 }
@@ -75,7 +102,7 @@ func (c *MessageClient) initConnections() {
 	for i := 0; i < c.minConn; i++ {
 		conn, err := c.createConnection()
 		if err == nil {
-			c.connections = append(c.connections, &ConnectionPool{conn: conn, loanCount: 0})
+			heap.Push(&c.connections, &ConnectionPool{conn: conn})
 		} else {
 			c.logger.Warn("Failed to pre-create connection:", err)
 		}
@@ -108,42 +135,35 @@ func (c *MessageClient) authenticate(conn *network.ZenithConnection) error {
 
 func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
-	if len(c.connections) < c.minConn {
-		for i := len(c.connections); i < c.minConn; i++ {
-			conn, err := c.createConnection()
-			if err == nil {
-				c.connections = append(c.connections, &ConnectionPool{conn: conn, loanCount: 0})
-			}
-		}
-	}
-
-	if len(c.connections) == 0 && len(c.connections) < c.maxConn {
+	if c.connections.Len() == 0 && len(c.connections) < c.maxConn {
 		conn, err := c.createConnection()
 		if err != nil {
 			return nil, err
 		}
-		cp := &ConnectionPool{conn: conn, loanCount: 0}
-		c.connections = append(c.connections, cp)
+		cp := &ConnectionPool{conn: conn}
+		heap.Push(&c.connections, cp)
 	}
 
-	if len(c.connections) == 0 {
+	if c.connections.Len() == 0 {
 		return nil, errors.New("no available connections")
 	}
 
-	c.lastUsed = (c.lastUsed + 1) % len(c.connections)
-	c.connections[c.lastUsed].loanCount++
-	return c.connections[c.lastUsed].conn, nil
+	selected := heap.Pop(&c.connections).(*ConnectionPool)
+	selected.loanCount++
+	heap.Push(&c.connections, selected)
+	c.mu.Unlock()
+
+	return selected.conn, nil
 }
 
 func (c *MessageClient) FreeConnection(conn *network.ZenithConnection) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for _, cp := range c.connections {
+	for i, cp := range c.connections {
 		if cp.conn == conn {
+			c.mu.Lock()
 			cp.loanCount--
+			heap.Fix(&c.connections, i)
+			c.mu.Unlock()
 			break
 		}
 	}
@@ -154,10 +174,17 @@ func (c *MessageClient) FreeConnection(conn *network.ZenithConnection) {
 }
 
 func (c *MessageClient) cleanupIdleConnections() {
-	for i := len(c.connections) - 1; i >= 0; i-- {
-		if c.connections[i].loanCount == 0 && len(c.connections) > c.minConn {
-			c.connections[i].conn.Close()
-			c.connections = append(c.connections[:i], c.connections[i+1:]...)
+	c.mu.Lock()
+	remaining := PriorityQueue{}
+	for c.connections.Len() > c.minConn {
+		cp := heap.Pop(&c.connections).(*ConnectionPool)
+		if cp.loanCount > 0 {
+			heap.Push(&remaining, cp)
+		} else {
+			cp.conn.Close()
 		}
 	}
+	c.connections = remaining
+	heap.Init(&c.connections)
+	c.mu.Unlock()
 }
