@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/onnasoft/ZenithSQL/nodes"
 	"github.com/onnasoft/ZenithSQL/statement"
@@ -17,17 +17,23 @@ import (
 type MessageServer struct {
 	listener       net.Listener
 	nodeManager    *nodes.NodeManager
-	responseMap    map[string]chan *transport.Message
 	port           int
 	logger         *logrus.Logger
 	messageHandler func(net.Conn, *transport.Message)
 	loginValidator func(*statement.LoginStatement) bool
 	tlsConfig      *tls.Config
-	mu             sync.Mutex
+	timeout        time.Duration
 }
 
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
 	defer utils.RecoverFromPanic("NewMessageServer", cfg.Logger)
+
+	if cfg.Port == 0 {
+		cfg.Port = 8080
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 5 * time.Second
+	}
 
 	svr := &MessageServer{
 		port:           cfg.Port,
@@ -35,8 +41,8 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		messageHandler: cfg.Handler,
 		loginValidator: cfg.LoginValidator,
 		nodeManager:    nodes.NewNodeManager(cfg.Logger),
-		responseMap:    make(map[string]chan *transport.Message),
 		tlsConfig:      loadTLSConfig(cfg),
+		timeout:        cfg.Timeout,
 	}
 
 	if cfg.Logger == nil {
@@ -48,12 +54,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 
 func (s *MessageServer) Start() error {
 	defer utils.RecoverFromPanic("Start", s.logger)
-
-	defer func() {
-		s.mu.Lock()
-		s.nodeManager.ClearAllNodes()
-		s.mu.Unlock()
-	}()
+	defer s.nodeManager.ClearAllNodes()
 
 	var listener net.Listener
 	var err error

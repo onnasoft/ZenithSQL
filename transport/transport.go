@@ -2,6 +2,7 @@ package transport
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -28,10 +29,19 @@ const (
 type MessageHeader struct {
 	StartMarker uint32
 	MessageID   [16]byte
+	messageID   string
 	MessageType protocol.MessageType
 	Timestamp   uint64
 	BodySize    uint32
 	EndMarker   uint32
+}
+
+func (h *MessageHeader) MessageIDString() string {
+	if h.messageID == "" {
+		h.messageID = hex.EncodeToString(h.MessageID[:])
+	}
+
+	return h.messageID
 }
 
 func (h *MessageHeader) ReadFrom(conn net.Conn) error {
@@ -101,6 +111,26 @@ func NewMessage(messageType protocol.MessageType, stmt statement.Statement) (*Me
 			EndMarker:   EndMarker,
 		},
 		Body: body,
+	}, nil
+}
+
+func NewResponseMessage(request *Message, stmt statement.Statement) (*Message, error) {
+	body, err := stmt.ToBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Message{
+		Header: &MessageHeader{
+			StartMarker: StartMarker,
+			MessageID:   request.Header.MessageID,
+			MessageType: stmt.Protocol(),
+			Timestamp:   uint64(time.Now().UnixNano()),
+			BodySize:    uint32(len(body)),
+			EndMarker:   EndMarker,
+		},
+		Body: body,
+		Stmt: stmt,
 	}, nil
 }
 
@@ -185,4 +215,10 @@ func (m *Message) OperationType() string {
 
 func (m *Message) String() string {
 	return m.Stmt.String()
+}
+
+func (m *Message) Clear() {
+	m.Header = nil
+	m.Body = nil
+	m.Stmt = nil
 }

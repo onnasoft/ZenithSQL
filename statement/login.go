@@ -2,14 +2,13 @@ package statement
 
 import (
 	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/ZenithSQL/protocol"
+	"github.com/onnasoft/ZenithSQL/utils"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -43,7 +42,7 @@ func NewLoginStatement(token, nodeID, nodeName string, isReplica bool, tags []st
 	}
 
 	timestamp := uint64(time.Now().UnixNano())
-	hash := generateHash(token, timestamp, nodeID, isReplica, tags)
+	hash := utils.GenerateHash(token, timestamp, nodeID, isReplica, tags)
 
 	stmt := &LoginStatement{
 		Timestamp: timestamp,
@@ -62,14 +61,8 @@ func NewLoginStatement(token, nodeID, nodeName string, isReplica bool, tags []st
 }
 
 func (l *LoginStatement) ValidateHash(token string) bool {
-	expectedHash := generateHash(token, l.Timestamp, l.NodeID, l.IsReplica, l.Tags)
+	expectedHash := utils.GenerateHash(token, l.Timestamp, l.NodeID, l.IsReplica, l.Tags)
 	return hmac.Equal([]byte(l.Hash), []byte(expectedHash))
-}
-
-func generateHash(token string, timestamp uint64, nodeID string, isReplica bool, tags []string) string {
-	h := hmac.New(sha256.New, []byte(token))
-	h.Write([]byte(fmt.Sprintf("%d|%s|%t|%v", timestamp, nodeID, isReplica, tags)))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (l *LoginStatement) Protocol() protocol.MessageType {

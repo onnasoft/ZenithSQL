@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
+	"time"
 
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
@@ -12,6 +13,7 @@ import (
 
 type ServerConfig struct {
 	Port           int
+	Timeout        time.Duration
 	Logger         *logrus.Logger
 	Handler        func(net.Conn, *transport.Message)
 	LoginValidator func(*statement.LoginStatement) bool

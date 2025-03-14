@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	NUM_CLIENTS                = 100
-	NUM_CONNECTIONS_PER_CLIENT = 10
-	MESSAGES_PER_CLIENT        = 50000
+	NUM_CLIENTS                = 200
+	MAX_CONNECTIONS_PER_CLIENT = 200
+	MIN_CONNECTIONS_PER_CLIENT = 100
+	MESSAGES_PER_CLIENT        = 10000
 	TIMEOUT                    = 3 * time.Second
 	SERVER_ADDR                = "127.0.0.1:8081"
 	TOKEN                      = "my-secure-token"
@@ -29,16 +30,19 @@ var (
 	failedRequests     int
 	totalLatency       time.Duration
 	mu                 sync.Mutex
+	clientInstance     *client.MessageClient
+	once               sync.Once
 )
 
 func main() {
 	logger := logrus.New()
 
 	svr := server.NewMessageServer(&server.ServerConfig{
-		Port:   8081,
-		Logger: logger,
+		Port:    8081,
+		Logger:  logger,
+		Timeout: 3 * time.Second,
 		Handler: func(conn net.Conn, message *transport.Message) {
-			msg, _ := transport.NewMessage(message.Stmt.Protocol(), statement.NewEmptyStatement(message.Stmt.Protocol()))
+			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(message.Stmt.Protocol()))
 			msg.Header.MessageID = message.Header.MessageID
 			msg.Header.MessageType = message.Header.MessageType
 
@@ -64,6 +68,19 @@ func main() {
 }
 
 func runLoadTest(logger *logrus.Logger) {
+	once.Do(func() {
+		clientInstance = client.NewMessageClient(&client.MessageConfig{
+			ServerAddr: SERVER_ADDR,
+			Token:      TOKEN,
+			NodeID:     "global_master",
+			Tags:       []string{"master"},
+			MaxConn:    MAX_CONNECTIONS_PER_CLIENT,
+			MinConn:    MIN_CONNECTIONS_PER_CLIENT,
+			Timeout:    TIMEOUT,
+			Logger:     logger,
+		})
+	})
+
 	var wg sync.WaitGroup
 	wg.Add(NUM_CLIENTS)
 
@@ -95,34 +112,34 @@ func runLoadTest(logger *logrus.Logger) {
 }
 
 func runClient(clientID int, logger *logrus.Logger) {
-	client := client.NewMessageClient(&client.MessageConfig{
-		ServerAddr: SERVER_ADDR,
-		Token:      TOKEN,
-		NodeID:     fmt.Sprintf("master_%d", clientID),
-		Tags:       []string{"master"},
-		MaxConn:    NUM_CONNECTIONS_PER_CLIENT,
-		Timeout:    TIMEOUT,
-		Logger:     logger,
-	})
-	client.Connect()
+	conn, _ := clientInstance.AllocateConnection()
+	if conn == nil {
+		logger.Warn("Failed to borrow connection")
+		return
+	}
+	defer clientInstance.FreeConnection(conn)
 
 	for i := 0; i < MESSAGES_PER_CLIENT; i++ {
-		startTime := time.Now()
+		func(i int) {
+			startTime := time.Now()
 
-		msg, _ := transport.NewMessage(protocol.CreateDatabase, &statement.CreateDatabaseStatement{
-			DatabaseName: fmt.Sprintf("test_db_%d_%d", clientID, i),
-		})
+			defer clientInstance.FreeConnection(conn)
 
-		_, err := client.SendMessage(msg)
-		elapsed := time.Since(startTime)
+			msg, _ := transport.NewMessage(protocol.CreateDatabase, &statement.CreateDatabaseStatement{
+				DatabaseName: fmt.Sprintf("test_db_%d_%d", clientID, i),
+			})
 
-		mu.Lock()
-		if err != nil {
-			failedRequests++
-		} else {
-			successfulRequests++
-			totalLatency += elapsed
-		}
-		mu.Unlock()
+			_, err := conn.Send(msg)
+			elapsed := time.Since(startTime)
+
+			mu.Lock()
+			if err != nil {
+				failedRequests++
+			} else {
+				successfulRequests++
+				totalLatency += elapsed
+			}
+			mu.Unlock()
+		}(i)
 	}
 }
