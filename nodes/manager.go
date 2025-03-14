@@ -114,3 +114,21 @@ func (m *NodeManager) GetMasters() map[string]*Node {
 
 	return m.masters
 }
+
+func (m *NodeManager) GetSlaves() map[string]*Node {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.slaves
+}
+
+func (m *NodeManager) GetRandomNode() *Node {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, node := range m.nodes {
+		return node
+	}
+
+	return nil
+}

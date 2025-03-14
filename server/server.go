@@ -98,3 +98,15 @@ func (s *MessageServer) registerNode(stmt *statement.LoginStatement, conn net.Co
 	}
 	node.AddConnection(conn)
 }
+
+func (s *MessageServer) Stop() {
+	defer utils.RecoverFromPanic("Stop", s.logger)
+
+	if s.listener != nil {
+		s.listener.Close()
+	}
+}
+
+func (s *MessageServer) GetRandomNode() *nodes.Node {
+	return s.nodeManager.GetRandomNode()
+}
