@@ -9,6 +9,7 @@ import (
 
 	"github.com/onnasoft/ZenithSQL/client"
 	"github.com/onnasoft/ZenithSQL/protocol"
+	"github.com/onnasoft/ZenithSQL/response"
 	"github.com/onnasoft/ZenithSQL/server"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
@@ -42,7 +43,8 @@ func main() {
 		Logger:  logger,
 		Timeout: 3 * time.Second,
 		Handler: func(conn net.Conn, message *transport.Message) {
-			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(message.Header.MessageType))
+			response, _ := response.DeserializeResponse(message.Header.MessageType, message.Body)
+			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(response.Protocol()))
 			msg.Header.MessageID = message.Header.MessageID
 			msg.Header.MessageType = message.Header.MessageType
 

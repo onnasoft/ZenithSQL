@@ -34,7 +34,6 @@ func (s *MessageServer) processMessage(conn net.Conn) {
 	for {
 		message := new(transport.Message)
 		if err := message.ReadFrom(conn); err != nil {
-			s.logger.Warn("Failed to read message from: ", conn.RemoteAddr(), " Error: ", err)
 			break
 		}
 
