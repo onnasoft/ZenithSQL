@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/nodes"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
@@ -82,7 +83,7 @@ func (s *MessageServer) Start() error {
 	}
 }
 
-func (s *MessageServer) registerNode(stmt *statement.LoginStatement, conn net.Conn) {
+func (s *MessageServer) registerNode(stmt *statement.LoginStatement, conn *network.ZenithConnection) {
 	defer utils.RecoverFromPanic("registerNode", s.logger)
 
 	var role nodes.NodeRole
