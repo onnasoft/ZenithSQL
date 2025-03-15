@@ -67,7 +67,6 @@ func (c *ZenithConnection) Listen() {
 		message := new(transport.Message)
 		err := message.ReadFrom(c.Conn)
 		if err != nil {
-			c.logger.Error("Error reading message: ", err)
 			c.Close()
 			return
 		}
