@@ -85,7 +85,6 @@ func (c *MessageClient) retryCreateConnection() {
 				c.mu.Unlock()
 				return
 			}
-			c.logger.Warn("Retrying connection in", reconnectInterval, "due to:", err)
 			time.Sleep(reconnectInterval)
 		}
 	}()
