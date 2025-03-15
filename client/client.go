@@ -174,7 +174,6 @@ func (c *MessageClient) handleConnectionFailure(failedConn *network.ZenithConnec
 
 	for i, cp := range c.connections {
 		if cp.conn == failedConn {
-			c.logger.Warn("Removing failed connection")
 			c.connections = append(c.connections[:i], c.connections[i+1:]...)
 			break
 		}
