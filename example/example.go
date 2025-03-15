@@ -53,6 +53,9 @@ func main() {
 				logger.Info("Failed to send response:", err)
 			}
 		},
+		OnConnection: func(conn *network.ZenithConnection, stmt *statement.LoginStatement) {
+			logger.Info("New connection from ", conn.RemoteAddr(), stmt.Tags)
+		},
 		LoginValidator: func(stmt *statement.LoginStatement) bool {
 			return stmt.ValidateHash(TOKEN)
 		},

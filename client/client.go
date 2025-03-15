@@ -99,7 +99,10 @@ func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
 }
 
 func (c *MessageClient) authenticate(conn *network.ZenithConnection) error {
-	stmt, _ := statement.NewLoginStatement(c.token, c.nodeID, c.nodeID, false, c.tags)
+	stmt, err := statement.NewLoginStatement(c.token, c.nodeID, c.nodeID, false, c.tags)
+	if err != nil {
+		return err
+	}
 	loginMessage, _ := transport.NewMessage(protocol.Login, stmt)
 	response, err := conn.Send(loginMessage)
 	if err != nil || response.Header.MessageType != protocol.Login {

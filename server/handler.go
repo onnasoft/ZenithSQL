@@ -3,6 +3,7 @@ package server
 import (
 	"net"
 
+	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/protocol"
 	"github.com/onnasoft/ZenithSQL/response"
@@ -20,7 +21,9 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 		conn.Close()
 		return
 	}
+
 	loginStmt := stmt.(*statement.LoginStatement)
+
 	handler := network.NewZenithConnection(conn, s.logger, s.timeout)
 
 	if s.onConnection != nil {
@@ -87,6 +90,11 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) (statement.Stateme
 	stmt := new(statement.LoginStatement)
 	if err := stmt.FromBytes(message.Body); err != nil {
 		s.logger.Warn("Failed to parse login statement, error: ", err)
+		return nil, false
+	}
+
+	if _, err := govalidator.ValidateStruct(stmt); err != nil {
+		s.logger.Warn("Invalid login statement: ", err)
 		return nil, false
 	}
 
