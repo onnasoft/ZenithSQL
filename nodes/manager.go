@@ -134,17 +134,17 @@ func (m *NodeManager) GetRandomNode() *Node {
 	return nil
 }
 
-func (m *NodeManager) SendToAll(msg *transport.Message) []*transport.Response {
+func (m *NodeManager) SendToAll(msg *transport.Message) []*transport.ExecutionResult {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	responses := make(chan *transport.Response, len(m.nodes))
-	results := make([]*transport.Response, 0, len(m.nodes))
+	responses := make(chan *transport.ExecutionResult, len(m.nodes))
+	results := make([]*transport.ExecutionResult, 0, len(m.nodes))
 
 	for _, node := range m.nodes {
 		go func(node *Node) {
 			response, err := node.Send(msg)
-			responses <- &transport.Response{
+			responses <- &transport.ExecutionResult{
 				Result: response,
 				Error:  err,
 			}

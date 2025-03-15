@@ -1,6 +1,6 @@
 package transport
 
-type Response struct {
+type ExecutionResult struct {
 	Result interface{}
 	Error  error
 }
