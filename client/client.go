@@ -83,7 +83,13 @@ func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
 	if err != nil {
 		return nil, err
 	}
-	go conn.Listen()
+
+	go conn.ListenWithCallback(func(err error) {
+		c.logger.Warn("Connection lost, attempting to reconnect...")
+
+		time.Sleep(c.timeout)
+		c.handleConnectionFailure(conn)
+	})
 
 	if err := c.authenticate(conn); err != nil {
 		conn.Close()
@@ -105,14 +111,14 @@ func (c *MessageClient) authenticate(conn *network.ZenithConnection) error {
 func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) {
 	defer utils.RecoverFromPanic("AllocateConnection", c.logger)
 	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.connections.Len() == 0 && len(c.connections) < c.maxConn {
 		conn, err := c.createConnection()
 		if err != nil {
 			return nil, err
 		}
-		cp := &ConnectionPool{conn: conn}
-		heap.Push(&c.connections, cp)
+		heap.Push(&c.connections, &ConnectionPool{conn: conn})
 	}
 
 	if c.connections.Len() == 0 {
@@ -122,7 +128,6 @@ func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) 
 	selected := heap.Pop(&c.connections).(*ConnectionPool)
 	selected.loanCount++
 	heap.Push(&c.connections, selected)
-	c.mu.Unlock()
 
 	return selected.conn, nil
 }
@@ -130,12 +135,13 @@ func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) 
 func (c *MessageClient) FreeConnection(conn *network.ZenithConnection) {
 	defer utils.RecoverFromPanic("FreeConnection", c.logger)
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	for i, cp := range c.connections {
 		if cp.conn == conn {
-			c.mu.Lock()
 			cp.loanCount--
 			heap.Fix(&c.connections, i)
-			c.mu.Unlock()
 			break
 		}
 	}
@@ -147,6 +153,8 @@ func (c *MessageClient) FreeConnection(conn *network.ZenithConnection) {
 
 func (c *MessageClient) cleanupIdleConnections() {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	remaining := PriorityQueue{}
 	for c.connections.Len() > c.minConn {
 		cp := heap.Pop(&c.connections).(*ConnectionPool)
@@ -158,5 +166,27 @@ func (c *MessageClient) cleanupIdleConnections() {
 	}
 	c.connections = remaining
 	heap.Init(&c.connections)
-	c.mu.Unlock()
+}
+
+func (c *MessageClient) handleConnectionFailure(failedConn *network.ZenithConnection) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for i, cp := range c.connections {
+		if cp.conn == failedConn {
+			c.logger.Warn("Removing failed connection")
+			c.connections = append(c.connections[:i], c.connections[i+1:]...)
+			break
+		}
+	}
+
+	if len(c.connections) < c.minConn {
+		c.logger.Info("Recreating lost connection")
+		conn, err := c.createConnection()
+		if err == nil {
+			heap.Push(&c.connections, &ConnectionPool{conn: conn})
+		} else {
+			c.logger.Warn("Failed to recreate connection:", err)
+		}
+	}
 }
