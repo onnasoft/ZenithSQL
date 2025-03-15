@@ -125,6 +125,6 @@ func (s *MessageServer) GetRandomNode() *nodes.Node {
 	return s.nodeManager.GetRandomNode()
 }
 
-func (s *MessageServer) SendToAll(msg *transport.Message) []*transport.ExecutionResult {
-	return s.nodeManager.SendToAll(msg)
+func (s *MessageServer) SendToAllSlaves(msg *transport.Message) []*transport.ExecutionResult {
+	return s.nodeManager.SendToAllSlaves(msg)
 }

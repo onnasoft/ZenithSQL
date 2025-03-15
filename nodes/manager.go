@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"sync"
+	"time"
 
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
@@ -15,6 +16,7 @@ type NodeManager struct {
 	taggedNodes map[string]map[string]*Node
 	mu          sync.RWMutex
 	logger      *logrus.Logger
+	timeout     time.Duration
 }
 
 func NewNodeManager(logger *logrus.Logger) *NodeManager {
@@ -24,6 +26,7 @@ func NewNodeManager(logger *logrus.Logger) *NodeManager {
 		slaves:      make(map[string]*Node),
 		taggedNodes: make(map[string]map[string]*Node),
 		logger:      logger,
+		timeout:     3 * time.Second,
 	}
 }
 
@@ -134,22 +137,44 @@ func (m *NodeManager) GetRandomNode() *Node {
 	return nil
 }
 
-func (m *NodeManager) SendToAll(msg *transport.Message) []*transport.ExecutionResult {
+func (m *NodeManager) SendToAllSlaves(msg *transport.Message) []*transport.ExecutionResult {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	var wg sync.WaitGroup
 	responses := make(chan *transport.ExecutionResult, len(m.nodes))
 	results := make([]*transport.ExecutionResult, 0, len(m.nodes))
 
-	for _, node := range m.nodes {
+	wg.Add(len(m.nodes))
+
+	for _, node := range m.slaves {
 		go func(node *Node) {
-			response, err := node.Send(msg)
-			responses <- &transport.ExecutionResult{
-				Result: response,
-				Error:  err,
+			defer wg.Done()
+			respChan := make(chan *transport.ExecutionResult, 1)
+			go func() {
+				response, err := node.Send(msg)
+				respChan <- &transport.ExecutionResult{
+					Result: response,
+					Error:  err,
+				}
+			}()
+
+			select {
+			case res := <-respChan:
+				responses <- res
+			case <-time.After(m.timeout):
+				responses <- &transport.ExecutionResult{
+					Result: nil,
+					Error:  transport.ErrTimeout,
+				}
 			}
 		}(node)
 	}
+
+	go func() {
+		wg.Wait()
+		close(responses)
+	}()
 
 	for response := range responses {
 		results = append(results, response)
