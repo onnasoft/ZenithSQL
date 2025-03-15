@@ -20,8 +20,9 @@ type ServerConfig struct {
 	CertFile       string
 	KeyFile        string
 
-	OnListening func()
-	OnShutdown  func()
+	OnListening  func()
+	OnConnection func(*network.ZenithConnection, *statement.LoginStatement)
+	OnShutdown   func()
 }
 
 func loadTLSConfig(cfg *ServerConfig) *tls.Config {

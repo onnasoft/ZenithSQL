@@ -21,8 +21,12 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 		return
 	}
 	loginStmt := stmt.(*statement.LoginStatement)
-
 	handler := network.NewZenithConnection(conn, s.logger, s.timeout)
+
+	if s.onConnection != nil {
+		s.onConnection(handler, loginStmt)
+	}
+
 	s.registerNode(loginStmt, handler)
 	s.processMessage(handler)
 }

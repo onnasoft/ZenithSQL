@@ -24,8 +24,9 @@ type MessageServer struct {
 	tlsConfig      *tls.Config
 	timeout        time.Duration
 
-	onListening func()
-	onShutdown  func()
+	onListening  func()
+	onConnection func(*network.ZenithConnection, *statement.LoginStatement)
+	onShutdown   func()
 }
 
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
@@ -47,8 +48,9 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		tlsConfig:      loadTLSConfig(cfg),
 		timeout:        cfg.Timeout,
 
-		onListening: cfg.OnListening,
-		onShutdown:  cfg.OnShutdown,
+		onListening:  cfg.OnListening,
+		onConnection: cfg.OnConnection,
+		onShutdown:   cfg.OnShutdown,
 	}
 
 	if cfg.Logger == nil {
