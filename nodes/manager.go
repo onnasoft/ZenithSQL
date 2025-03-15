@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/onnasoft/ZenithSQL/statement"
+	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/sirupsen/logrus"
 )
 
@@ -131,4 +132,28 @@ func (m *NodeManager) GetRandomNode() *Node {
 	}
 
 	return nil
+}
+
+func (m *NodeManager) SendToAll(msg *transport.Message) []*transport.Response {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	responses := make(chan *transport.Response, len(m.nodes))
+	results := make([]*transport.Response, 0, len(m.nodes))
+
+	for _, node := range m.nodes {
+		go func(node *Node) {
+			response, err := node.Send(msg)
+			responses <- &transport.Response{
+				Result: response,
+				Error:  err,
+			}
+		}(node)
+	}
+
+	for response := range responses {
+		results = append(results, response)
+	}
+
+	return results
 }

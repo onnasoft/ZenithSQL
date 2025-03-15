@@ -1,6 +1,7 @@
 package nodes
 
 import (
+	"errors"
 	"net"
 	"sync"
 
@@ -20,7 +21,7 @@ type Node struct {
 	ID          string
 	Role        NodeRole
 	Connections map[*network.ZenithConnection]struct{}
-	Replicas    []net.Conn
+	Replicas    []*network.ZenithConnection
 	mu          sync.Mutex
 	logger      *logrus.Logger
 	Tags        map[string]struct{}
@@ -40,7 +41,7 @@ func NewNode(config *NodeConfig) *Node {
 		ID:          config.ID,
 		Role:        config.Role,
 		Connections: make(map[*network.ZenithConnection]struct{}),
-		Replicas:    make([]net.Conn, 0),
+		Replicas:    make([]*network.ZenithConnection, 0),
 		logger:      config.Logger,
 		Tags:        config.Tags,
 		Address:     config.Address,
@@ -59,7 +60,7 @@ func (n *Node) RemoveConnection(conn *network.ZenithConnection) {
 	delete(n.Connections, conn)
 }
 
-func (n *Node) AddReplica(replicaConn net.Conn) {
+func (n *Node) AddReplica(replicaConn *network.ZenithConnection) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.Replicas = append(n.Replicas, replicaConn)
@@ -86,11 +87,12 @@ func (n *Node) Close() {
 	}
 }
 
-func (n *Node) Send(message *transport.Message) {
+func (n *Node) Send(message *transport.Message) (*transport.Message, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	for conn := range n.Connections {
-		conn.Send(message)
-		break
+		return conn.Send(message)
 	}
+
+	return nil, errors.New("no connection available")
 }

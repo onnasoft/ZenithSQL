@@ -113,3 +113,7 @@ func (s *MessageServer) Stop() error {
 func (s *MessageServer) GetRandomNode() *nodes.Node {
 	return s.nodeManager.GetRandomNode()
 }
+
+func (s *MessageServer) SendToAll(msg *transport.Message) {
+	s.nodeManager.SendToAll(msg)
+}
