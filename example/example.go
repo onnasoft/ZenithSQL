@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
 	"sync"
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/client"
+	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/protocol"
 	"github.com/onnasoft/ZenithSQL/response"
 	"github.com/onnasoft/ZenithSQL/server"
@@ -42,7 +42,7 @@ func main() {
 		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,
-		Handler: func(conn net.Conn, message *transport.Message) {
+		Handler: func(conn *network.ZenithConnection, message *transport.Message) {
 			response, _ := response.DeserializeResponse(message.Header.MessageType, message.Body)
 			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(response.Protocol()))
 			msg.Header.MessageID = message.Header.MessageID

@@ -19,7 +19,7 @@ type MessageServer struct {
 	nodeManager    *nodes.NodeManager
 	address        string
 	logger         *logrus.Logger
-	messageHandler func(net.Conn, *transport.Message)
+	messageHandler func(*network.ZenithConnection, *transport.Message)
 	loginValidator func(*statement.LoginStatement) bool
 	tlsConfig      *tls.Config
 	timeout        time.Duration

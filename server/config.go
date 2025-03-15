@@ -3,9 +3,9 @@ package server
 import (
 	"crypto/tls"
 	"log"
-	"net"
 	"time"
 
+	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/sirupsen/logrus"
@@ -15,7 +15,7 @@ type ServerConfig struct {
 	Address        string
 	Timeout        time.Duration
 	Logger         *logrus.Logger
-	Handler        func(net.Conn, *transport.Message)
+	Handler        func(*network.ZenithConnection, *transport.Message)
 	LoginValidator func(*statement.LoginStatement) bool
 	CertFile       string
 	KeyFile        string

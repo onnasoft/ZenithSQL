@@ -27,7 +27,7 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 	s.processMessage(handler)
 }
 
-func (s *MessageServer) processMessage(conn net.Conn) {
+func (s *MessageServer) processMessage(conn *network.ZenithConnection) {
 	defer utils.RecoverFromPanic("processMessage", s.logger)
 	defer conn.Close()
 
@@ -41,7 +41,7 @@ func (s *MessageServer) processMessage(conn net.Conn) {
 	}
 }
 
-func (s *MessageServer) handler(conn net.Conn, message *transport.Message) {
+func (s *MessageServer) handler(conn *network.ZenithConnection, message *transport.Message) {
 	if s.handlePing(conn, message) {
 		return
 	}
@@ -49,7 +49,7 @@ func (s *MessageServer) handler(conn net.Conn, message *transport.Message) {
 	s.handlerMessage(conn, message)
 }
 
-func (s *MessageServer) handlerMessage(conn net.Conn, message *transport.Message) {
+func (s *MessageServer) handlerMessage(conn *network.ZenithConnection, message *transport.Message) {
 	defer utils.RecoverFromPanic("handler", s.logger)
 
 	if s.messageHandler != nil {
