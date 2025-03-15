@@ -13,13 +13,11 @@ import (
 
 type ZenithConnection struct {
 	net.Conn
-	ID          string
 	responseMap map[string]chan *transport.Message
 	mu          sync.Mutex
 	logger      *logrus.Logger
 	timeout     time.Duration
 
-	sendQueue chan []byte
 	closeChan chan struct{}
 }
 
@@ -31,11 +29,9 @@ func NewZenithConnection(conn net.Conn, logger *logrus.Logger, timeout time.Dura
 		timeout:     timeout,
 
 		mu:        sync.Mutex{},
-		sendQueue: make(chan []byte, 100),
 		closeChan: make(chan struct{}),
 	}
 
-	go connection.startWriter()
 	return connection
 }
 
@@ -47,7 +43,7 @@ func (c *ZenithConnection) Send(message *transport.Message) (*transport.Message,
 	c.responseMap[messageID] = responseChan
 	c.mu.Unlock()
 
-	_, err := c.Conn.Write(message.ToBytes())
+	_, err := c.Write(message.ToBytes())
 	if err != nil {
 		c.mu.Lock()
 		delete(c.responseMap, messageID)
@@ -57,43 +53,12 @@ func (c *ZenithConnection) Send(message *transport.Message) (*transport.Message,
 
 	select {
 	case response := <-responseChan:
-		c.mu.Lock()
-		delete(c.responseMap, messageID)
-		c.mu.Unlock()
 		return response, nil
 	case <-time.After(c.timeout):
 		c.mu.Lock()
 		delete(c.responseMap, messageID)
 		c.mu.Unlock()
 		return nil, errors.New("timeout waiting for response")
-	}
-}
-
-func (c *ZenithConnection) startWriter() {
-	for {
-		select {
-		case data := <-c.sendQueue:
-			if data == nil {
-				continue
-			}
-			_, err := c.Conn.Write(data)
-			if err != nil {
-				c.logger.Error("Failed to write to", c.Conn.RemoteAddr(), ":", err)
-				c.Close()
-				return
-			}
-		case <-c.closeChan:
-			return
-		}
-	}
-}
-
-func (c *ZenithConnection) Write(data []byte) (int, error) {
-	select {
-	case c.sendQueue <- data:
-		return len(data), nil
-	case <-c.closeChan:
-		return 0, net.ErrClosed
 	}
 }
 
@@ -111,11 +76,14 @@ func (c *ZenithConnection) Listen() {
 
 		c.mu.Lock()
 		if responseChan, exists := c.responseMap[messageID]; exists {
+			delete(c.responseMap, messageID)
+			c.mu.Unlock()
+
 			responseChan <- message
 		} else {
 			c.logger.Warn("Received unexpected message:", message.Header.MessageType)
+			c.mu.Unlock()
 		}
-		c.mu.Unlock()
 	}
 }
 
@@ -128,7 +96,6 @@ func (c *ZenithConnection) Close() error {
 		return nil
 	default:
 		close(c.closeChan)
-		close(c.sendQueue)
 		return c.Conn.Close()
 	}
 }
