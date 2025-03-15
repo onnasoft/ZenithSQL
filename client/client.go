@@ -14,6 +14,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const reconnectInterval = 3 * time.Second
+
 type MessageClient struct {
 	serverAddr  string
 	token       string
@@ -69,13 +71,24 @@ func NewMessageClient(config *MessageConfig) *MessageClient {
 
 func (c *MessageClient) initConnections() {
 	for i := 0; i < c.minConn; i++ {
-		conn, err := c.createConnection()
-		if err == nil {
-			heap.Push(&c.connections, &ConnectionPool{conn: conn})
-		} else {
-			c.logger.Warn("Failed to pre-create connection:", err)
-		}
+		c.retryCreateConnection()
 	}
+}
+
+func (c *MessageClient) retryCreateConnection() {
+	go func() {
+		for {
+			conn, err := c.createConnection()
+			if err == nil {
+				c.mu.Lock()
+				heap.Push(&c.connections, &ConnectionPool{conn: conn})
+				c.mu.Unlock()
+				return
+			}
+			c.logger.Warn("Retrying connection in", reconnectInterval, "due to:", err)
+			time.Sleep(reconnectInterval)
+		}
+	}()
 }
 
 func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
@@ -85,9 +98,7 @@ func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
 	}
 
 	go conn.ListenWithCallback(func(err error) {
-		c.logger.Warn("Connection lost, attempting to reconnect...")
-
-		time.Sleep(c.timeout)
+		c.logger.Warn("Connection lost:", err, "Attempting to reconnect...")
 		c.handleConnectionFailure(conn)
 	})
 
@@ -117,11 +128,7 @@ func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) 
 	defer c.mu.Unlock()
 
 	if c.connections.Len() == 0 && len(c.connections) < c.maxConn {
-		conn, err := c.createConnection()
-		if err != nil {
-			return nil, err
-		}
-		heap.Push(&c.connections, &ConnectionPool{conn: conn})
+		c.retryCreateConnection()
 	}
 
 	if c.connections.Len() == 0 {
@@ -182,13 +189,5 @@ func (c *MessageClient) handleConnectionFailure(failedConn *network.ZenithConnec
 		}
 	}
 
-	if len(c.connections) < c.minConn {
-		c.logger.Info("Recreating lost connection")
-		conn, err := c.createConnection()
-		if err == nil {
-			heap.Push(&c.connections, &ConnectionPool{conn: conn})
-		} else {
-			c.logger.Warn("Failed to recreate connection:", err)
-		}
-	}
+	c.retryCreateConnection()
 }
