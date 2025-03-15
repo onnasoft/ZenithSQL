@@ -42,7 +42,7 @@ func main() {
 		Logger:  logger,
 		Timeout: 3 * time.Second,
 		Handler: func(conn net.Conn, message *transport.Message) {
-			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(message.Stmt.Protocol()))
+			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(message.Header.MessageType))
 			msg.Header.MessageID = message.Header.MessageID
 			msg.Header.MessageType = message.Header.MessageType
 

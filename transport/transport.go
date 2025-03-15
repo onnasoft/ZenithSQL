@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/onnasoft/ZenithSQL/protocol"
-	"github.com/onnasoft/ZenithSQL/response"
 	"github.com/onnasoft/ZenithSQL/statement"
 )
 
@@ -90,7 +89,6 @@ func (h *MessageHeader) ReadFrom(conn net.Conn) error {
 type Message struct {
 	Header *MessageHeader
 	Body   []byte
-	Stmt   statement.Statement
 }
 
 func NewMessage(messageType protocol.MessageType, stmt statement.Statement) (*Message, error) {
@@ -109,7 +107,6 @@ func NewMessage(messageType protocol.MessageType, stmt statement.Statement) (*Me
 			EndMarker:   EndMarker,
 		},
 		Body: body,
-		Stmt: stmt,
 	}, nil
 }
 
@@ -125,13 +122,6 @@ func (m *Message) ReadFrom(conn net.Conn) error {
 	m.Body = make([]byte, m.Header.BodySize)
 	if _, err := conn.Read(m.Body); err != nil {
 		return err
-	}
-
-	switch m.Header.MessageFlag {
-	case RequestMessage:
-		m.Stmt, err = statement.DeserializeStatement(protocol.MessageType(m.Header.MessageType), m.Body)
-	case ResponseMessage:
-		m.Stmt, err = response.DeserializeResponse(protocol.MessageType(m.Header.MessageType), m.Body)
 	}
 
 	return err
@@ -153,7 +143,6 @@ func NewResponseMessage(request *Message, stmt statement.Statement) (*Message, e
 			EndMarker:   EndMarker,
 		},
 		Body: body,
-		Stmt: stmt,
 	}, nil
 }
 

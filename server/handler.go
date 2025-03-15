@@ -81,7 +81,11 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) (statement.Stateme
 		return nil, false
 	}
 
-	stmt := message.Stmt.(*statement.LoginStatement)
+	stmt := new(statement.LoginStatement)
+	if err := stmt.FromBytes(message.Body); err != nil {
+		s.logger.Warn("Failed to parse login statement, error: ", err)
+		return nil, false
+	}
 
 	if s.loginValidator != nil && !s.loginValidator(stmt) {
 		s.logger.Warn("Invalid token for node:", stmt.NodeID, "from:", conn.RemoteAddr())
