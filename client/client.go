@@ -10,6 +10,7 @@ import (
 	"github.com/onnasoft/ZenithSQL/protocol"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
+	"github.com/onnasoft/ZenithSQL/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -102,6 +103,7 @@ func (c *MessageClient) authenticate(conn *network.ZenithConnection) error {
 }
 
 func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) {
+	defer utils.RecoverFromPanic("AllocateConnection", c.logger)
 	c.mu.Lock()
 
 	if c.connections.Len() == 0 && len(c.connections) < c.maxConn {
@@ -126,6 +128,8 @@ func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) 
 }
 
 func (c *MessageClient) FreeConnection(conn *network.ZenithConnection) {
+	defer utils.RecoverFromPanic("FreeConnection", c.logger)
+
 	for i, cp := range c.connections {
 		if cp.conn == conn {
 			c.mu.Lock()

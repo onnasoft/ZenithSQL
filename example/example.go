@@ -38,7 +38,7 @@ func main() {
 	logger := logrus.New()
 
 	svr := server.NewMessageServer(&server.ServerConfig{
-		Port:    8081,
+		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,
 		Handler: func(conn net.Conn, message *transport.Message) {

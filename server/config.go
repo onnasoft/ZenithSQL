@@ -12,7 +12,7 @@ import (
 )
 
 type ServerConfig struct {
-	Port           int
+	Address        string
 	Timeout        time.Duration
 	Logger         *logrus.Logger
 	Handler        func(net.Conn, *transport.Message)

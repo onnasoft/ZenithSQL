@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/tls"
-	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -18,7 +17,7 @@ import (
 type MessageServer struct {
 	listener       net.Listener
 	nodeManager    *nodes.NodeManager
-	port           int
+	address        string
 	logger         *logrus.Logger
 	messageHandler func(net.Conn, *transport.Message)
 	loginValidator func(*statement.LoginStatement) bool
@@ -32,15 +31,15 @@ type MessageServer struct {
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
 	defer utils.RecoverFromPanic("NewMessageServer", cfg.Logger)
 
-	if cfg.Port == 0 {
-		cfg.Port = 8080
+	if cfg.Address == "" {
+		cfg.Address = ":8080"
 	}
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 5 * time.Second
 	}
 
 	svr := &MessageServer{
-		port:           cfg.Port,
+		address:        cfg.Address,
 		logger:         cfg.Logger,
 		messageHandler: cfg.Handler,
 		loginValidator: cfg.LoginValidator,
@@ -67,9 +66,9 @@ func (s *MessageServer) Start() error {
 	var err error
 
 	if s.tlsConfig != nil {
-		listener, err = tls.Listen("tcp", fmt.Sprintf(":%d", s.port), s.tlsConfig)
+		listener, err = tls.Listen("tcp", s.address, s.tlsConfig)
 	} else {
-		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+		listener, err = net.Listen("tcp", s.address)
 	}
 
 	if err != nil {
