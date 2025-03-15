@@ -5,6 +5,7 @@ import (
 
 	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/protocol"
+	"github.com/onnasoft/ZenithSQL/response"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/onnasoft/ZenithSQL/utils"
@@ -65,8 +66,7 @@ func (s *MessageServer) handlePing(conn net.Conn, message *transport.Message) bo
 		return false
 	}
 
-	response, _ := transport.NewMessage(protocol.Pong, statement.NewEmptyStatement(protocol.Pong))
-	response.Header.MessageID = message.Header.MessageID
+	response, _ := transport.NewResponseMessage(message, response.NewPongResponse())
 	conn.Write(response.ToBytes())
 
 	return true
@@ -88,10 +88,7 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) (statement.Stateme
 		return nil, false
 	}
 
-	response, _ := transport.NewMessage(protocol.Login, statement.NewEmptyStatement(protocol.Login))
-	response.Header.MessageID = message.Header.MessageID
-	response.Header.Timestamp = message.Header.Timestamp
-
+	response, _ := transport.NewResponseMessage(message, response.NewLoginResponse(true, "Login successful"))
 	_, err := conn.Write(response.ToBytes())
 	if err != nil {
 		s.logger.Warn("Failed to send login response to:", conn.RemoteAddr())
