@@ -24,6 +24,9 @@ type MessageServer struct {
 	loginValidator func(*statement.LoginStatement) bool
 	tlsConfig      *tls.Config
 	timeout        time.Duration
+
+	onListening func()
+	onShutdown  func()
 }
 
 func NewMessageServer(cfg *ServerConfig) *MessageServer {
@@ -44,6 +47,9 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		nodeManager:    nodes.NewNodeManager(cfg.Logger),
 		tlsConfig:      loadTLSConfig(cfg),
 		timeout:        cfg.Timeout,
+
+		onListening: cfg.OnListening,
+		onShutdown:  cfg.OnShutdown,
 	}
 
 	if cfg.Logger == nil {
@@ -70,7 +76,9 @@ func (s *MessageServer) Start() error {
 		return err
 	}
 
-	s.logger.Info("Server is running at port ", s.port)
+	if s.onListening != nil {
+		s.onListening()
+	}
 	s.listener = listener
 
 	for {
@@ -102,6 +110,10 @@ func (s *MessageServer) registerNode(stmt *statement.LoginStatement, conn *netwo
 
 func (s *MessageServer) Stop() error {
 	defer utils.RecoverFromPanic("Stop", s.logger)
+
+	if s.onShutdown != nil {
+		s.onShutdown()
+	}
 
 	if s.listener != nil {
 		return s.listener.Close()

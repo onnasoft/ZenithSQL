@@ -19,6 +19,9 @@ type ServerConfig struct {
 	LoginValidator func(*statement.LoginStatement) bool
 	CertFile       string
 	KeyFile        string
+
+	OnListening func()
+	OnShutdown  func()
 }
 
 func loadTLSConfig(cfg *ServerConfig) *tls.Config {
