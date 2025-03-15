@@ -68,7 +68,6 @@ func (c *ZenithConnection) ListenWithCallback(onClose func(error)) {
 			message := new(transport.Message)
 			err := message.ReadFrom(c.Conn)
 			if err != nil {
-				c.logger.Warn("Connection closed:", err)
 				c.Close()
 				if onClose != nil {
 					onClose(err)

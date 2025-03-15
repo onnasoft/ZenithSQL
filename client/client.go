@@ -97,7 +97,6 @@ func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
 	}
 
 	go conn.ListenWithCallback(func(err error) {
-		c.logger.Warn("Connection lost:", err, "Attempting to reconnect...")
 		c.handleConnectionFailure(conn)
 	})
 
