@@ -76,8 +76,8 @@ func (c *MessageClient) initConnections() {
 
 	for i := 0; i < c.minConn; i++ {
 		go func() {
+			defer wg.Done()
 			c.retryCreateConnection()
-			wg.Done()
 		}()
 	}
 
