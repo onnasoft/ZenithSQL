@@ -12,6 +12,7 @@ import (
 	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/onnasoft/ZenithSQL/utils"
 	"github.com/sirupsen/logrus"
+	"github.com/valyala/fasthttp/reuseport"
 )
 
 type MessageServer struct {
@@ -67,14 +68,13 @@ func (s *MessageServer) Start() error {
 	var listener net.Listener
 	var err error
 
-	if s.tlsConfig != nil {
-		listener, err = tls.Listen("tcp", s.address, s.tlsConfig)
-	} else {
-		listener, err = net.Listen("tcp", s.address)
-	}
-
+	listener, err = reuseport.Listen("tcp", s.address)
 	if err != nil {
 		return err
+	}
+
+	if s.tlsConfig != nil {
+		listener = tls.NewListener(listener, s.tlsConfig)
 	}
 
 	if s.onListening != nil {
