@@ -46,24 +46,24 @@ const (
 	ReleaseSavepoint MessageType = 44
 
 	// Replication & Synchronization
-	MasterConnected   MessageType = 60 // Notificación de que el maestro se ha conectado
-	SlaveConnected    MessageType = 61 // Notificación de que un esclavo se ha conectado
-	StartReplication  MessageType = 62 // Iniciar replicación
-	StopReplication   MessageType = 63 // Detener replicación
-	SyncData          MessageType = 64 // Sincronizar datos entre maestro y esclavo
-	ReplicationStatus MessageType = 65 // Obtener el estado de la replicación
-	ReplicationLag    MessageType = 66 // Obtener el retraso de replicación
-	PromoteToMaster   MessageType = 67 // Promover un esclavo a maestro
-	DemoteToSlave     MessageType = 68 // Degradar un maestro a esclavo
+	MasterConnected   MessageType = 60
+	SlaveConnected    MessageType = 61
+	StartReplication  MessageType = 62
+	StopReplication   MessageType = 63
+	SyncData          MessageType = 64
+	ReplicationStatus MessageType = 65
+	ReplicationLag    MessageType = 66
+	PromoteToMaster   MessageType = 67
+	DemoteToSlave     MessageType = 68
 
 	// Authentication & User Management
 	Login           MessageType = 50
-	Logout          MessageType = 51 // Cerrar sesión
-	CreateUser      MessageType = 52 // Crear un nuevo usuario
-	DropUser        MessageType = 53 // Eliminar un usuario
-	GrantPrivilege  MessageType = 54 // Otorgar privilegios a un usuario
-	RevokePrivilege MessageType = 55 // Revocar privilegios de un usuario
-	ChangePassword  MessageType = 56 // Cambiar contraseña de usuario
+	Logout          MessageType = 51
+	CreateUser      MessageType = 52
+	DropUser        MessageType = 53
+	GrantPrivilege  MessageType = 54
+	RevokePrivilege MessageType = 55
+	ChangePassword  MessageType = 56
 
 	// Utility Commands
 	Ping           MessageType = 90
@@ -73,29 +73,29 @@ const (
 	UnknownCommand MessageType = 255
 
 	// Cluster Management
-	JoinCluster   MessageType = 100 // Unirse a un clúster
-	LeaveCluster  MessageType = 101 // Abandonar un clúster
-	ClusterStatus MessageType = 102 // Obtener el estado del clúster
-	ElectLeader   MessageType = 103 // Elegir un nuevo líder en el clúster
+	JoinCluster   MessageType = 100
+	LeaveCluster  MessageType = 101
+	ClusterStatus MessageType = 102
+	ElectLeader   MessageType = 103
 
 	// Backup & Restore
-	StartBackup  MessageType = 110 // Iniciar un backup
-	StopBackup   MessageType = 111 // Detener un backup
-	Restore      MessageType = 112 // Restaurar desde un backup
-	BackupStatus MessageType = 113 // Obtener el estado del backup
+	StartBackup  MessageType = 110
+	StopBackup   MessageType = 111
+	Restore      MessageType = 112
+	BackupStatus MessageType = 113
 
 	// Monitoring & Metrics
-	GetMetrics  MessageType = 120 // Obtener métricas del sistema
-	GetLogs     MessageType = 121 // Obtener registros (logs) del sistema
-	HealthCheck MessageType = 122 // Verificar el estado de salud del sistema
+	GetMetrics  MessageType = 120
+	GetLogs     MessageType = 121
+	HealthCheck MessageType = 122
 
 	// Configuration Management
-	SetConfig    MessageType = 130 // Establecer configuración
-	GetConfig    MessageType = 131 // Obtener configuración
-	ReloadConfig MessageType = 132 // Recargar configuración
+	SetConfig    MessageType = 130
+	GetConfig    MessageType = 131
+	ReloadConfig MessageType = 132
 
 	// Custom Commands
-	CustomCommand MessageType = 200 // Comando personalizado (para extensiones)
+	CustomCommand MessageType = 200
 )
 
 var messageTypeNamesLookup = map[string]MessageType{}
@@ -123,6 +123,7 @@ var messageTypeNames = map[MessageType]string{
 	CreateDatabase: "CreateDatabase",
 	DropDatabase:   "DropDatabase",
 	ShowDatabases:  "ShowDatabases",
+	UseDatabase:    "UseDatabase",
 
 	// Table Operations
 	CreateTable:   "CreateTable",
@@ -132,11 +133,13 @@ var messageTypeNames = map[MessageType]string{
 	TruncateTable: "TruncateTable",
 	ShowTables:    "ShowTables",
 	DescribeTable: "DescribeTable",
+	CopyTable:     "CopyTable",
 
 	// Index Operations
-	CreateIndex: "CreateIndex",
-	DropIndex:   "DropIndex",
-	ShowIndexes: "ShowIndexes",
+	CreateIndex:  "CreateIndex",
+	DropIndex:    "DropIndex",
+	ShowIndexes:  "ShowIndexes",
+	RebuildIndex: "RebuildIndex",
 
 	// Data Operations
 	Insert:     "Insert",
@@ -145,6 +148,7 @@ var messageTypeNames = map[MessageType]string{
 	Delete:     "Delete",
 	BulkInsert: "BulkInsert",
 	Upsert:     "Upsert",
+	Query:      "Query",
 
 	// Transaction Management
 	BeginTransaction: "BeginTransaction",
@@ -153,8 +157,25 @@ var messageTypeNames = map[MessageType]string{
 	Savepoint:        "Savepoint",
 	ReleaseSavepoint: "ReleaseSavepoint",
 
+	// Replication & Synchronization
+	MasterConnected:   "MasterConnected",
+	SlaveConnected:    "SlaveConnected",
+	StartReplication:  "StartReplication",
+	StopReplication:   "StopReplication",
+	SyncData:          "SyncData",
+	ReplicationStatus: "ReplicationStatus",
+	ReplicationLag:    "ReplicationLag",
+	PromoteToMaster:   "PromoteToMaster",
+	DemoteToSlave:     "DemoteToSlave",
+
 	// Authentication & User Management
-	Login: "Login",
+	Login:           "Login",
+	Logout:          "Logout",
+	CreateUser:      "CreateUser",
+	DropUser:        "DropUser",
+	GrantPrivilege:  "GrantPrivilege",
+	RevokePrivilege: "RevokePrivilege",
+	ChangePassword:  "ChangePassword",
 
 	// Utility Commands
 	Ping:           "Ping",
@@ -162,6 +183,31 @@ var messageTypeNames = map[MessageType]string{
 	Greeting:       "Greeting",
 	Welcome:        "Welcome",
 	UnknownCommand: "UnknownCommand",
+
+	// Cluster Management
+	JoinCluster:   "JoinCluster",
+	LeaveCluster:  "LeaveCluster",
+	ClusterStatus: "ClusterStatus",
+	ElectLeader:   "ElectLeader",
+
+	// Backup & Restore
+	StartBackup:  "StartBackup",
+	StopBackup:   "StopBackup",
+	Restore:      "Restore",
+	BackupStatus: "BackupStatus",
+
+	// Monitoring & Metrics
+	GetMetrics:  "GetMetrics",
+	GetLogs:     "GetLogs",
+	HealthCheck: "HealthCheck",
+
+	// Configuration Management
+	SetConfig:    "SetConfig",
+	GetConfig:    "GetConfig",
+	ReloadConfig: "ReloadConfig",
+
+	// Custom Commands
+	CustomCommand: "CustomCommand",
 }
 
 // String returns the name of the MessageType.
