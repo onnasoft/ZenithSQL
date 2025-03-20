@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/client"
+	"github.com/onnasoft/ZenithSQL/messageclient"
+	"github.com/onnasoft/ZenithSQL/messageserver"
 	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/protocol"
 	"github.com/onnasoft/ZenithSQL/response"
-	"github.com/onnasoft/ZenithSQL/server"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/sirupsen/logrus"
@@ -31,14 +31,14 @@ var (
 	failedRequests     int
 	totalLatency       time.Duration
 	mu                 sync.Mutex
-	clientInstance     *client.MessageClient
+	clientInstance     *messageclient.MessageClient
 	once               sync.Once
 )
 
 func main() {
 	logger := logrus.New()
 
-	svr := server.NewMessageServer(&server.ServerConfig{
+	svr := messageserver.NewMessageServer(&messageserver.ServerConfig{
 		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,
@@ -76,7 +76,7 @@ func main() {
 
 func runLoadTest(logger *logrus.Logger) {
 	once.Do(func() {
-		clientInstance = client.NewMessageClient(&client.MessageConfig{
+		clientInstance = messageclient.NewMessageClient(&messageclient.MessageConfig{
 			ServerAddr: SERVER_ADDR,
 			Token:      TOKEN,
 			NodeID:     "global_master",

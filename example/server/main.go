@@ -4,9 +4,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/onnasoft/ZenithSQL/messageserver"
 	"github.com/onnasoft/ZenithSQL/network"
 	"github.com/onnasoft/ZenithSQL/response"
-	"github.com/onnasoft/ZenithSQL/server"
 	"github.com/onnasoft/ZenithSQL/statement"
 	"github.com/onnasoft/ZenithSQL/transport"
 	"github.com/sirupsen/logrus"
@@ -25,7 +25,7 @@ const (
 func main() {
 	logger := logrus.New()
 
-	svr := server.NewMessageServer(&server.ServerConfig{
+	svr := messageserver.NewMessageServer(&messageserver.ServerConfig{
 		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,

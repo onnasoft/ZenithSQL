@@ -1,4 +1,4 @@
-package client
+package messageclient
 
 type PriorityQueue []*ConnectionPool
 
