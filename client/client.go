@@ -155,8 +155,7 @@ func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) 
 	}
 
 	selected := c.connections[0]
-	c.connections = append(c.connections, selected)
-	heap.Remove(&c.connections, 0)
+	c.connections = append(c.connections, selected)[1:]
 
 	selected.loanCount++
 	c.mu.Unlock()
