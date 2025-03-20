@@ -130,7 +130,7 @@ func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
 }
 
 func (c *MessageClient) authenticate(conn *network.ZenithConnection) error {
-	stmt, err := statement.NewLoginStatement(c.token, c.nodeID, c.nodeID, false, c.tags)
+	stmt, err := statement.NewJoinClusterStatement(c.token, c.nodeID, c.nodeID, false, c.tags)
 	if err != nil {
 		return err
 	}

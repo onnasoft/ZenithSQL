@@ -12,16 +12,16 @@ import (
 )
 
 type ServerConfig struct {
-	Address        string
-	Timeout        time.Duration
-	Logger         *logrus.Logger
-	Handler        func(*network.ZenithConnection, *transport.Message)
-	LoginValidator func(*statement.LoginStatement) bool
-	CertFile       string
-	KeyFile        string
+	Address       string
+	Timeout       time.Duration
+	Logger        *logrus.Logger
+	Handler       func(*network.ZenithConnection, *transport.Message)
+	JoinValidator func(*statement.JoinClusterStatement) bool
+	CertFile      string
+	KeyFile       string
 
 	OnListening  func()
-	OnConnection func(*network.ZenithConnection, *statement.LoginStatement)
+	OnConnection func(*network.ZenithConnection, *statement.JoinClusterStatement)
 	OnShutdown   func()
 }
 

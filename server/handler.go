@@ -22,7 +22,7 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 		return
 	}
 
-	loginStmt := stmt.(*statement.LoginStatement)
+	loginStmt := stmt.(*statement.JoinClusterStatement)
 
 	handler := network.NewZenithConnection(conn, s.logger, s.timeout)
 
@@ -87,7 +87,7 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) (statement.Stateme
 		return nil, false
 	}
 
-	stmt := new(statement.LoginStatement)
+	stmt := new(statement.JoinClusterStatement)
 	if err := stmt.FromBytes(message.Body); err != nil {
 		s.logger.Warn("Failed to parse login statement, error: ", err)
 		return nil, false
@@ -98,7 +98,7 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) (statement.Stateme
 		return nil, false
 	}
 
-	if s.loginValidator != nil && !s.loginValidator(stmt) {
+	if s.joinValidator != nil && !s.joinValidator(stmt) {
 		s.logger.Warn("Invalid token for node:", stmt.NodeID, "from:", conn.RemoteAddr())
 		return nil, false
 	}

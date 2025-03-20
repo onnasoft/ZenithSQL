@@ -21,12 +21,12 @@ type MessageServer struct {
 	address        string
 	logger         *logrus.Logger
 	messageHandler func(*network.ZenithConnection, *transport.Message)
-	loginValidator func(*statement.LoginStatement) bool
+	joinValidator  func(*statement.JoinClusterStatement) bool
 	tlsConfig      *tls.Config
 	timeout        time.Duration
 
 	onListening  func()
-	onConnection func(*network.ZenithConnection, *statement.LoginStatement)
+	onConnection func(*network.ZenithConnection, *statement.JoinClusterStatement)
 	onShutdown   func()
 }
 
@@ -44,7 +44,7 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 		address:        cfg.Address,
 		logger:         cfg.Logger,
 		messageHandler: cfg.Handler,
-		loginValidator: cfg.LoginValidator,
+		joinValidator:  cfg.JoinValidator,
 		nodeManager:    nodes.NewNodeManager(cfg.Logger),
 		tlsConfig:      loadTLSConfig(cfg),
 		timeout:        cfg.Timeout,
@@ -92,7 +92,7 @@ func (s *MessageServer) Start() error {
 	}
 }
 
-func (s *MessageServer) registerNode(stmt *statement.LoginStatement, conn *network.ZenithConnection) {
+func (s *MessageServer) registerNode(stmt *statement.JoinClusterStatement, conn *network.ZenithConnection) {
 	defer utils.RecoverFromPanic("registerNode", s.logger)
 
 	var role nodes.NodeRole

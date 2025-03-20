@@ -11,6 +11,7 @@ const (
 	CreateDatabase MessageType = 1
 	DropDatabase   MessageType = 2
 	ShowDatabases  MessageType = 3
+	UseDatabase    MessageType = 4
 
 	// Table Operations
 	CreateTable   MessageType = 10
@@ -20,11 +21,13 @@ const (
 	TruncateTable MessageType = 14
 	ShowTables    MessageType = 15
 	DescribeTable MessageType = 16
+	CopyTable     MessageType = 17
 
 	// Index Operations
-	CreateIndex MessageType = 20
-	DropIndex   MessageType = 21
-	ShowIndexes MessageType = 22
+	CreateIndex  MessageType = 20
+	DropIndex    MessageType = 21
+	ShowIndexes  MessageType = 22
+	RebuildIndex MessageType = 23
 
 	// Data Operations
 	Insert     MessageType = 30
@@ -33,6 +36,7 @@ const (
 	Delete     MessageType = 33
 	BulkInsert MessageType = 34
 	Upsert     MessageType = 35
+	Query      MessageType = 36
 
 	// Transaction Management
 	BeginTransaction MessageType = 40
@@ -41,8 +45,25 @@ const (
 	Savepoint        MessageType = 43
 	ReleaseSavepoint MessageType = 44
 
+	// Replication & Synchronization
+	MasterConnected   MessageType = 60 // Notificación de que el maestro se ha conectado
+	SlaveConnected    MessageType = 61 // Notificación de que un esclavo se ha conectado
+	StartReplication  MessageType = 62 // Iniciar replicación
+	StopReplication   MessageType = 63 // Detener replicación
+	SyncData          MessageType = 64 // Sincronizar datos entre maestro y esclavo
+	ReplicationStatus MessageType = 65 // Obtener el estado de la replicación
+	ReplicationLag    MessageType = 66 // Obtener el retraso de replicación
+	PromoteToMaster   MessageType = 67 // Promover un esclavo a maestro
+	DemoteToSlave     MessageType = 68 // Degradar un maestro a esclavo
+
 	// Authentication & User Management
-	Login MessageType = 50
+	Login           MessageType = 50
+	Logout          MessageType = 51 // Cerrar sesión
+	CreateUser      MessageType = 52 // Crear un nuevo usuario
+	DropUser        MessageType = 53 // Eliminar un usuario
+	GrantPrivilege  MessageType = 54 // Otorgar privilegios a un usuario
+	RevokePrivilege MessageType = 55 // Revocar privilegios de un usuario
+	ChangePassword  MessageType = 56 // Cambiar contraseña de usuario
 
 	// Utility Commands
 	Ping           MessageType = 90
@@ -50,6 +71,31 @@ const (
 	Greeting       MessageType = 92
 	Welcome        MessageType = 93
 	UnknownCommand MessageType = 255
+
+	// Cluster Management
+	JoinCluster   MessageType = 100 // Unirse a un clúster
+	LeaveCluster  MessageType = 101 // Abandonar un clúster
+	ClusterStatus MessageType = 102 // Obtener el estado del clúster
+	ElectLeader   MessageType = 103 // Elegir un nuevo líder en el clúster
+
+	// Backup & Restore
+	StartBackup  MessageType = 110 // Iniciar un backup
+	StopBackup   MessageType = 111 // Detener un backup
+	Restore      MessageType = 112 // Restaurar desde un backup
+	BackupStatus MessageType = 113 // Obtener el estado del backup
+
+	// Monitoring & Metrics
+	GetMetrics  MessageType = 120 // Obtener métricas del sistema
+	GetLogs     MessageType = 121 // Obtener registros (logs) del sistema
+	HealthCheck MessageType = 122 // Verificar el estado de salud del sistema
+
+	// Configuration Management
+	SetConfig    MessageType = 130 // Establecer configuración
+	GetConfig    MessageType = 131 // Obtener configuración
+	ReloadConfig MessageType = 132 // Recargar configuración
+
+	// Custom Commands
+	CustomCommand MessageType = 200 // Comando personalizado (para extensiones)
 )
 
 var messageTypeNamesLookup = map[string]MessageType{}

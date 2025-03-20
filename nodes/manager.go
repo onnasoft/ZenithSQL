@@ -42,7 +42,7 @@ func (m *NodeManager) GetNode(id string) *Node {
 	return node
 }
 
-func (m *NodeManager) AddNode(stmt *statement.LoginStatement, role NodeRole) *Node {
+func (m *NodeManager) AddNode(stmt *statement.JoinClusterStatement, role NodeRole) *Node {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

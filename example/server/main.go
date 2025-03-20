@@ -40,10 +40,10 @@ func main() {
 				logger.Info("Failed to send response:", err)
 			}
 		},
-		OnConnection: func(conn *network.ZenithConnection, stmt *statement.LoginStatement) {
+		OnConnection: func(conn *network.ZenithConnection, stmt *statement.JoinClusterStatement) {
 			logger.Info("New connection from ", conn.RemoteAddr(), stmt.Tags)
 		},
-		LoginValidator: func(stmt *statement.LoginStatement) bool {
+		JoinValidator: func(stmt *statement.JoinClusterStatement) bool {
 			return stmt.ValidateHash(TOKEN)
 		},
 	})
