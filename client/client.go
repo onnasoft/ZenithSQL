@@ -17,16 +17,17 @@ import (
 const reconnectInterval = 3 * time.Second
 
 type MessageClient struct {
-	serverAddr  string
-	token       string
-	nodeID      string
-	tags        []string
-	logger      *logrus.Logger
-	connections PriorityQueue
-	mu          sync.Mutex
-	maxConn     int
-	minConn     int
-	timeout     time.Duration
+	serverAddr         string
+	token              string
+	nodeID             string
+	tags               []string
+	logger             *logrus.Logger
+	connections        PriorityQueue
+	mu                 sync.Mutex
+	maxConn            int
+	minConn            int
+	pendingConnections int
+	timeout            time.Duration
 }
 
 type MessageConfig struct {
@@ -70,24 +71,45 @@ func NewMessageClient(config *MessageConfig) *MessageClient {
 }
 
 func (c *MessageClient) initConnections() {
+	wg := sync.WaitGroup{}
+	wg.Add(c.minConn)
+
 	for i := 0; i < c.minConn; i++ {
-		c.retryCreateConnection()
+		go func() {
+			c.retryCreateConnection()
+			wg.Done()
+		}()
 	}
+
+	wg.Wait()
 }
 
 func (c *MessageClient) retryCreateConnection() {
-	go func() {
-		for {
-			conn, err := c.createConnection()
-			if err == nil {
-				c.mu.Lock()
-				heap.Push(&c.connections, &ConnectionPool{conn: conn})
+	c.mu.Lock()
+	if c.pendingConnections+c.connections.Len() >= c.maxConn {
+		c.mu.Unlock()
+		return
+	}
+	c.pendingConnections++
+	c.mu.Unlock()
+	for {
+		conn, err := c.createConnection()
+		if err == nil {
+			c.mu.Lock()
+			if c.connections.Len() >= c.maxConn {
 				c.mu.Unlock()
+				conn.Close()
+				c.logger.Warn("Connection pool is full")
 				return
 			}
-			time.Sleep(reconnectInterval)
+			c.pendingConnections--
+			c.connections.Push(&ConnectionPool{conn: conn})
+			c.mu.Unlock()
+			return
 		}
-	}()
+
+		time.Sleep(reconnectInterval)
+	}
 }
 
 func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
@@ -122,20 +144,22 @@ func (c *MessageClient) authenticate(conn *network.ZenithConnection) error {
 
 func (c *MessageClient) AllocateConnection() (*network.ZenithConnection, error) {
 	defer utils.RecoverFromPanic("AllocateConnection", c.logger)
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
-	if c.connections.Len() == 0 && len(c.connections) < c.maxConn {
+	if c.connections.Len() == 0 || c.connections.Len() < c.maxConn {
 		c.retryCreateConnection()
 	}
 
+	c.mu.Lock()
 	if c.connections.Len() == 0 {
 		return nil, errors.New("no available connections")
 	}
 
-	selected := heap.Pop(&c.connections).(*ConnectionPool)
+	selected := c.connections[0]
+	c.connections = append(c.connections, selected)
+	heap.Remove(&c.connections, 0)
+
 	selected.loanCount++
-	heap.Push(&c.connections, selected)
+	c.mu.Unlock()
 
 	return selected.conn, nil
 }
@@ -144,41 +168,22 @@ func (c *MessageClient) FreeConnection(conn *network.ZenithConnection) {
 	defer utils.RecoverFromPanic("FreeConnection", c.logger)
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	for i, cp := range c.connections {
 		if cp.conn == conn {
 			cp.loanCount--
-			heap.Fix(&c.connections, i)
+			if cp.loanCount <= 0 {
+				heap.Remove(&c.connections, i)
+			} else {
+				heap.Fix(&c.connections, i)
+			}
 			break
 		}
 	}
-
-	if len(c.connections) > c.minConn {
-		c.cleanupIdleConnections()
-	}
-}
-
-func (c *MessageClient) cleanupIdleConnections() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	remaining := PriorityQueue{}
-	for c.connections.Len() > c.minConn {
-		cp := heap.Pop(&c.connections).(*ConnectionPool)
-		if cp.loanCount > 0 {
-			heap.Push(&remaining, cp)
-		} else {
-			cp.conn.Close()
-		}
-	}
-	c.connections = remaining
-	heap.Init(&c.connections)
+	c.mu.Unlock()
 }
 
 func (c *MessageClient) handleConnectionFailure(failedConn *network.ZenithConnection) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	for i, cp := range c.connections {
 		if cp.conn == failedConn {
@@ -186,6 +191,7 @@ func (c *MessageClient) handleConnectionFailure(failedConn *network.ZenithConnec
 			break
 		}
 	}
+	c.mu.Unlock()
 
 	c.retryCreateConnection()
 }

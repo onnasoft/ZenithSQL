@@ -18,8 +18,8 @@ import (
 
 const (
 	NUM_CLIENTS                = 200
-	MAX_CONNECTIONS_PER_CLIENT = 200
-	MIN_CONNECTIONS_PER_CLIENT = 100
+	MAX_CONNECTIONS_PER_CLIENT = 100
+	MIN_CONNECTIONS_PER_CLIENT = 10
 	MESSAGES_PER_CLIENT        = 10000
 	TIMEOUT                    = 3 * time.Second
 	SERVER_ADDR                = "127.0.0.1:8081"
@@ -69,6 +69,8 @@ func main() {
 	}()
 
 	time.Sleep(1 * time.Second)
+	logger.Info("Server started")
+
 	runLoadTest(logger)
 }
 
@@ -117,9 +119,9 @@ func runLoadTest(logger *logrus.Logger) {
 }
 
 func runClient(clientID int, logger *logrus.Logger) {
-	conn, _ := clientInstance.AllocateConnection()
-	if conn == nil {
-		logger.Warn("Failed to borrow connection")
+	conn, err := clientInstance.AllocateConnection()
+	if err != nil {
+		logger.Warn("Failed to borrow connection: ", err)
 		return
 	}
 	defer clientInstance.FreeConnection(conn)
