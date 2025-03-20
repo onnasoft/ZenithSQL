@@ -62,7 +62,7 @@ func (c *ZenithConnection) Send(message *transport.Message) (*transport.Message,
 	}
 }
 
-func (c *ZenithConnection) ListenWithCallback(onClose func(error)) {
+func (c *ZenithConnection) Listen(onMessage func(*transport.Message), onClose func(error)) {
 	go func() {
 		for {
 			message := new(transport.Message)
@@ -83,35 +83,11 @@ func (c *ZenithConnection) ListenWithCallback(onClose func(error)) {
 				c.mu.Unlock()
 				responseChan <- message
 			} else {
-				c.logger.Warn("Received unexpected message:", message.Header.MessageType)
+				onMessage(message)
 				c.mu.Unlock()
 			}
 		}
 	}()
-}
-
-func (c *ZenithConnection) Listen() {
-	for {
-		message := new(transport.Message)
-		err := message.ReadFrom(c.Conn)
-		if err != nil {
-			c.Close()
-			return
-		}
-
-		messageID := message.Header.MessageIDString()
-
-		c.mu.Lock()
-		if responseChan, exists := c.responseMap[messageID]; exists {
-			delete(c.responseMap, messageID)
-			c.mu.Unlock()
-
-			responseChan <- message
-		} else {
-			c.logger.Warn("Received unexpected message:", message.Header.MessageType)
-			c.mu.Unlock()
-		}
-	}
 }
 
 func (c *ZenithConnection) Close() error {

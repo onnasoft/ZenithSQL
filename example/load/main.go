@@ -42,7 +42,7 @@ func main() {
 		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,
-		Handler: func(conn *network.ZenithConnection, message *transport.Message) {
+		OnMessage: func(conn *network.ZenithConnection, message *transport.Message) {
 			response, _ := response.DeserializeResponse(message.Header.MessageType, message.Body)
 			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(response.Protocol()))
 			msg.Header.MessageID = message.Header.MessageID

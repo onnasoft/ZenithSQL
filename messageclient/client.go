@@ -28,20 +28,20 @@ type MessageClient struct {
 	minConn            int
 	pendingConnections int
 	timeout            time.Duration
-}
 
-type MessageConfig struct {
-	ServerAddr string
-	Token      string
-	NodeID     string
-	Tags       []string
-	Logger     *logrus.Logger
-	MinConn    int
-	MaxConn    int
-	Timeout    time.Duration
+	onConnection func()
+	onMessage    func(*network.ZenithConnection, *transport.Message)
+	onShutdown   func()
 }
 
 func NewMessageClient(config *MessageConfig) *MessageClient {
+	defer utils.RecoverFromPanic("NewMessageClient", config.Logger)
+	defer func() {
+		if config.OnConnection != nil {
+			config.OnConnection()
+		}
+	}()
+
 	minConn, maxConn := config.MinConn, config.MaxConn
 	if maxConn <= 0 {
 		maxConn = 1
@@ -63,6 +63,10 @@ func NewMessageClient(config *MessageConfig) *MessageClient {
 		minConn:     minConn,
 		maxConn:     maxConn,
 		timeout:     config.Timeout,
+
+		onConnection: config.OnConnection,
+		onMessage:    config.OnMessage,
+		onShutdown:   config.OnShutdown,
 	}
 
 	heap.Init(&client.connections)
@@ -118,9 +122,16 @@ func (c *MessageClient) createConnection() (*network.ZenithConnection, error) {
 		return nil, err
 	}
 
-	go conn.ListenWithCallback(func(err error) {
+	handleConnectionFailure := func(err error) {
 		c.handleConnectionFailure(conn)
-	})
+	}
+	handleMessage := func(m *transport.Message) {
+		if c.onMessage != nil {
+			c.onMessage(conn, m)
+		}
+	}
+
+	go conn.Listen(handleMessage, handleConnectionFailure)
 
 	if err := c.authenticate(conn); err != nil {
 		conn.Close()
@@ -193,4 +204,19 @@ func (c *MessageClient) handleConnectionFailure(failedConn *network.ZenithConnec
 	c.mu.Unlock()
 
 	c.retryCreateConnection()
+}
+
+func (c *MessageClient) Shutdown() {
+	defer utils.RecoverFromPanic("Shutdown", c.logger)
+	defer func() {
+		if c.onShutdown != nil {
+			c.onShutdown()
+		}
+	}()
+
+	c.mu.Lock()
+	for _, cp := range c.connections {
+		cp.conn.Close()
+	}
+	c.mu.Unlock()
 }

@@ -16,17 +16,17 @@ import (
 )
 
 type MessageServer struct {
-	listener       net.Listener
-	nodeManager    *nodes.NodeManager
-	address        string
-	logger         *logrus.Logger
-	messageHandler func(*network.ZenithConnection, *transport.Message)
-	joinValidator  func(*statement.JoinClusterStatement) bool
-	tlsConfig      *tls.Config
-	timeout        time.Duration
+	listener      net.Listener
+	nodeManager   *nodes.NodeManager
+	address       string
+	logger        *logrus.Logger
+	joinValidator func(*statement.JoinClusterStatement) bool
+	tlsConfig     *tls.Config
+	timeout       time.Duration
 
 	onListening  func()
 	onConnection func(*network.ZenithConnection, *statement.JoinClusterStatement)
+	onMessage    func(*network.ZenithConnection, *transport.Message)
 	onShutdown   func()
 }
 
@@ -41,16 +41,16 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 	}
 
 	svr := &MessageServer{
-		address:        cfg.Address,
-		logger:         cfg.Logger,
-		messageHandler: cfg.Handler,
-		joinValidator:  cfg.JoinValidator,
-		nodeManager:    nodes.NewNodeManager(cfg.Logger),
-		tlsConfig:      loadTLSConfig(cfg),
-		timeout:        cfg.Timeout,
+		address:       cfg.Address,
+		logger:        cfg.Logger,
+		joinValidator: cfg.JoinValidator,
+		nodeManager:   nodes.NewNodeManager(cfg.Logger),
+		tlsConfig:     loadTLSConfig(cfg),
+		timeout:       cfg.Timeout,
 
 		onListening:  cfg.OnListening,
 		onConnection: cfg.OnConnection,
+		onMessage:    cfg.OnMessage,
 		onShutdown:   cfg.OnShutdown,
 	}
 

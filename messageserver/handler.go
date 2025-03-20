@@ -59,8 +59,8 @@ func (s *MessageServer) handler(conn *network.ZenithConnection, message *transpo
 func (s *MessageServer) handlerMessage(conn *network.ZenithConnection, message *transport.Message) {
 	defer utils.RecoverFromPanic("handler", s.logger)
 
-	if s.messageHandler != nil {
-		s.messageHandler(conn, message)
+	if s.onMessage != nil {
+		s.onMessage(conn, message)
 		return
 	}
 }
