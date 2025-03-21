@@ -30,16 +30,7 @@ func main() {
 		Logger:  logger,
 		Timeout: 3 * time.Second,
 		OnMessage: func(conn *network.ZenithConnection, message *transport.Message) {
-			response, _ := message.DeserializeBody()
-
-			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(response.Protocol()))
-			msg.Header.MessageID = message.Header.MessageID
-			msg.Header.MessageType = message.Header.MessageType
-
-			_, err := conn.Write(msg.ToBytes())
-			if err != nil {
-				logger.Info("Failed to send response:", err)
-			}
+			logger.Infof("Received message on server from %s: %s", conn.RemoteAddr(), message.Header.MessageType)
 		},
 		OnConnection: func(conn *network.ZenithConnection, stmt *statement.JoinClusterStatement) {
 			logger.Info("New connection from ", conn.RemoteAddr(), stmt.Tags)
@@ -68,8 +59,14 @@ func main() {
 		Timeout:    TIMEOUT,
 		Logger:     logger,
 		OnMessage: func(conn *network.ZenithConnection, message *transport.Message) {
-			logger.Info("Received message from ", conn.RemoteAddr())
-			conn.Write(message.ToBytes())
+			logger.Infof("Received message on client from %s: %s", conn.RemoteAddr(), message.Header.MessageType)
+
+			stmt := statement.NewEmptyStatement(protocol.Welcome)
+			response, _ := transport.NewResponseMessage(message, stmt)
+			_, err := conn.Write(response.ToBytes())
+			if err != nil {
+				logger.Info("Failed to send response:", err)
+			}
 		},
 	})
 
@@ -83,18 +80,15 @@ func main() {
 			logger.Info("Failed to create statement: ", err)
 			return
 		}
-		logger.Info("Statement created: ", stmt)
 
 		msg, err := transport.NewMessage(protocol.MasterConnected, stmt)
 		if err != nil {
 			logger.Info("Failed to create message: ", err)
 			return
 		}
-		logger.Info("Message created: ", msg.Header.MessageType)
 
 		result := svr.SendToAllSlaves(msg)
-
-		logger.Info("SendToAllSlaves result:", result)
+		logger.Info("SendToAllSlaves result: ", len(result))
 	}
 
 	<-make(chan struct{})

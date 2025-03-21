@@ -43,7 +43,7 @@ func (c *ZenithConnection) Send(message *transport.Message) (*transport.Message,
 	c.responseMap[messageID] = responseChan
 	c.mu.Unlock()
 
-	_, err := c.Write(message.ToBytes())
+	_, err := c.Conn.Write(message.ToBytes())
 	if err != nil {
 		c.mu.Lock()
 		delete(c.responseMap, messageID)

@@ -149,7 +149,7 @@ func (m *NodeManager) SendToAllSlaves(msg *transport.Message) []*transport.Execu
 	var wg sync.WaitGroup
 	responses := make(chan *transport.ExecutionResult, len(m.nodes))
 
-	wg.Add(len(m.nodes))
+	wg.Add(len(m.slaves))
 
 	for _, node := range m.slaves {
 		go func(node *Node) {
@@ -162,13 +162,14 @@ func (m *NodeManager) SendToAllSlaves(msg *transport.Message) []*transport.Execu
 		}(node)
 	}
 
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(responses)
+	}()
 
 	for response := range responses {
 		results = append(results, response)
 	}
-
-	close(responses)
 
 	return results
 }

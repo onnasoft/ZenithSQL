@@ -30,22 +30,13 @@ func (s *MessageServer) handleConnection(conn net.Conn) {
 		s.onConnection(handler, loginStmt)
 	}
 
+	go handler.Listen(func(m *transport.Message) {
+		s.handler(handler, m)
+	}, func(error) {
+		s.logger.Warn("Connection closed: ", conn.RemoteAddr())
+	})
+
 	s.registerNode(loginStmt, handler)
-	s.processMessage(handler)
-}
-
-func (s *MessageServer) processMessage(conn *network.ZenithConnection) {
-	defer utils.RecoverFromPanic("processMessage", s.logger)
-	defer conn.Close()
-
-	for {
-		message := new(transport.Message)
-		if err := message.ReadFrom(conn); err != nil {
-			break
-		}
-
-		go s.handler(conn, message)
-	}
 }
 
 func (s *MessageServer) handler(conn *network.ZenithConnection, message *transport.Message) {
