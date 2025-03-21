@@ -17,8 +17,6 @@ type ZenithConnection struct {
 	mu          sync.Mutex
 	logger      *logrus.Logger
 	timeout     time.Duration
-
-	closeChan chan struct{}
 }
 
 func NewZenithConnection(conn net.Conn, logger *logrus.Logger, timeout time.Duration) *ZenithConnection {
@@ -28,8 +26,7 @@ func NewZenithConnection(conn net.Conn, logger *logrus.Logger, timeout time.Dura
 		logger:      logger,
 		timeout:     timeout,
 
-		mu:        sync.Mutex{},
-		closeChan: make(chan struct{}),
+		mu: sync.Mutex{},
 	}
 
 	return connection
@@ -38,6 +35,7 @@ func NewZenithConnection(conn net.Conn, logger *logrus.Logger, timeout time.Dura
 func (c *ZenithConnection) Send(message *transport.Message) (*transport.Message, error) {
 	messageID := message.Header.MessageIDString()
 	responseChan := make(chan *transport.Message, 1)
+	defer close(responseChan)
 
 	c.mu.Lock()
 	c.responseMap[messageID] = responseChan
@@ -94,13 +92,7 @@ func (c *ZenithConnection) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	select {
-	case <-c.closeChan:
-		return nil
-	default:
-		close(c.closeChan)
-		return c.Conn.Close()
-	}
+	return c.Conn.Close()
 }
 
 func DialTimeout(network, address string, logger *logrus.Logger, timeout time.Duration) (*ZenithConnection, error) {
