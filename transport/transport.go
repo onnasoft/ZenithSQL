@@ -173,8 +173,8 @@ func (m *Message) FromBytes(bytes []byte) error {
 
 func (m *Message) DeserializeBody() (dto.Dto, error) {
 	if m.Header.MessageFlag != RequestMessage {
-		return response.DeserializeResponse(m.Header.MessageType, m.Body)
+		return response.Deserialize(m.Header.MessageType, m.Body)
 	}
 
-	return statement.DeserializeStatement(m.Header.MessageType, m.Body)
+	return statement.Deserialize(m.Header.MessageType, m.Body)
 }
