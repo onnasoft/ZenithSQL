@@ -220,3 +220,7 @@ func (c *MessageClient) Shutdown() {
 	}
 	c.mu.Unlock()
 }
+
+func (c *MessageClient) ServerAddr() string {
+	return c.serverAddr
+}

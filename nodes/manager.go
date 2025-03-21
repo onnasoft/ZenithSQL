@@ -141,44 +141,34 @@ func (m *NodeManager) SendToAllSlaves(msg *transport.Message) []*transport.Execu
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	results := make([]*transport.ExecutionResult, 0, len(m.nodes))
+	if len(m.slaves) == 0 {
+		return make([]*transport.ExecutionResult, 0)
+	}
+
 	var wg sync.WaitGroup
 	responses := make(chan *transport.ExecutionResult, len(m.nodes))
-	results := make([]*transport.ExecutionResult, 0, len(m.nodes))
 
 	wg.Add(len(m.nodes))
 
 	for _, node := range m.slaves {
 		go func(node *Node) {
 			defer wg.Done()
-			respChan := make(chan *transport.ExecutionResult, 1)
-			go func() {
-				response, err := node.Send(msg)
-				respChan <- &transport.ExecutionResult{
-					Result: response,
-					Error:  err,
-				}
-			}()
-
-			select {
-			case res := <-respChan:
-				responses <- res
-			case <-time.After(m.timeout):
-				responses <- &transport.ExecutionResult{
-					Result: nil,
-					Error:  transport.ErrTimeout,
-				}
+			response, err := node.Send(msg)
+			responses <- &transport.ExecutionResult{
+				Result: response,
+				Error:  err,
 			}
 		}(node)
 	}
 
-	go func() {
-		wg.Wait()
-		close(responses)
-	}()
+	wg.Wait()
 
 	for response := range responses {
 		results = append(results, response)
 	}
+
+	close(responses)
 
 	return results
 }

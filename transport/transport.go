@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/onnasoft/ZenithSQL/dto"
 	"github.com/onnasoft/ZenithSQL/protocol"
+	"github.com/onnasoft/ZenithSQL/response"
 	"github.com/onnasoft/ZenithSQL/statement"
 )
 
@@ -167,4 +169,12 @@ func (m *Message) FromBytes(bytes []byte) error {
 	}
 
 	return nil
+}
+
+func (m *Message) DeserializeBody() (dto.Dto, error) {
+	if m.Header.MessageFlag != RequestMessage {
+		return response.DeserializeResponse(m.Header.MessageType, m.Body)
+	}
+
+	return statement.DeserializeStatement(m.Header.MessageType, m.Body)
 }

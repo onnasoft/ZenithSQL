@@ -1,93 +1,116 @@
 package response
 
 import (
+	"github.com/onnasoft/ZenithSQL/dto"
 	"github.com/onnasoft/ZenithSQL/protocol"
-	"github.com/onnasoft/ZenithSQL/statement"
 )
 
 type Response interface {
 	IsSuccess() bool
 	GetMessage() string
-	statement.Statement
+	dto.Dto
 }
 
-func DeserializeResponse(messageType protocol.MessageType, data []byte) (Response, error) {
-	var resp Response
+type responseConstructor func() Response
 
-	switch messageType {
+var responseMap = map[protocol.MessageType]responseConstructor{
 	// Database Management
-	case protocol.CreateDatabase:
-		resp = &CreateDatabaseResponse{}
-	case protocol.DropDatabase:
-		resp = &DropDatabaseResponse{}
+	protocol.CreateDatabase: func() Response { return &CreateDatabaseResponse{} },
+	protocol.DropDatabase:   func() Response { return &DropDatabaseResponse{} },
+	protocol.ShowDatabases:  func() Response { return &ShowDatabasesResponse{} },
+	protocol.UseDatabase:    func() Response { return &UseDatabaseResponse{} },
 
 	// Table Operations
-	case protocol.CreateTable:
-		resp = &CreateTableResponse{}
-	case protocol.DropTable:
-		resp = &DropTableResponse{}
-	case protocol.AlterTable:
-		resp = &AlterTableResponse{}
-	case protocol.RenameTable:
-		resp = &RenameTableResponse{}
-	case protocol.TruncateTable:
-		resp = &TruncateTableResponse{}
-	case protocol.ShowTables:
-		resp = &ShowTablesResponse{}
-	case protocol.DescribeTable:
-		resp = &DescribeTableResponse{}
+	protocol.CreateTable:   func() Response { return &CreateTableResponse{} },
+	protocol.DropTable:     func() Response { return &DropTableResponse{} },
+	protocol.AlterTable:    func() Response { return &AlterTableResponse{} },
+	protocol.RenameTable:   func() Response { return &RenameTableResponse{} },
+	protocol.TruncateTable: func() Response { return &TruncateTableResponse{} },
+	protocol.ShowTables:    func() Response { return &ShowTablesResponse{} },
+	protocol.DescribeTable: func() Response { return &DescribeTableResponse{} },
+	protocol.CopyTable:     func() Response { return &CopyTableResponse{} },
 
 	// Index Operations
-	case protocol.CreateIndex:
-		resp = &CreateIndexResponse{}
-	case protocol.DropIndex:
-		resp = &DropIndexResponse{}
-	case protocol.ShowIndexes:
-		resp = &ShowIndexesResponse{}
+	protocol.CreateIndex:  func() Response { return &CreateIndexResponse{} },
+	protocol.DropIndex:    func() Response { return &DropIndexResponse{} },
+	protocol.ShowIndexes:  func() Response { return &ShowIndexesResponse{} },
+	protocol.RebuildIndex: func() Response { return &RebuildIndexResponse{} },
 
 	// Data Operations
-	case protocol.Insert:
-		resp = &InsertResponse{}
-	case protocol.Select:
-		resp = &SelectResponse{}
-	case protocol.Update:
-		resp = &UpdateResponse{}
-	case protocol.Delete:
-		resp = &DeleteResponse{}
-	case protocol.BulkInsert:
-		resp = &BulkInsertResponse{}
-	case protocol.Upsert:
-		resp = &UpsertResponse{}
+	protocol.Insert:     func() Response { return &InsertResponse{} },
+	protocol.Select:     func() Response { return &SelectResponse{} },
+	protocol.Update:     func() Response { return &UpdateResponse{} },
+	protocol.Delete:     func() Response { return &DeleteResponse{} },
+	protocol.BulkInsert: func() Response { return &BulkInsertResponse{} },
+	protocol.Upsert:     func() Response { return &UpsertResponse{} },
+	protocol.Query:      func() Response { return &QueryResponse{} },
 
 	// Transaction Management
-	case protocol.BeginTransaction:
-		resp = &BeginTransactionResponse{}
-	case protocol.Commit:
-		resp = &CommitResponse{}
-	case protocol.Rollback:
-		resp = &RollbackResponse{}
-	case protocol.Savepoint:
-		resp = &SavepointResponse{}
-	case protocol.ReleaseSavepoint:
-		resp = &ReleaseSavepointResponse{}
+	protocol.BeginTransaction: func() Response { return &BeginTransactionResponse{} },
+	protocol.Commit:           func() Response { return &CommitResponse{} },
+	protocol.Rollback:         func() Response { return &RollbackResponse{} },
+	protocol.Savepoint:        func() Response { return &SavepointResponse{} },
+	protocol.ReleaseSavepoint: func() Response { return &ReleaseSavepointResponse{} },
+
+	// Replication & Synchronization
+	protocol.MasterConnected:   func() Response { return &MasterConnectedResponse{} },
+	protocol.SlaveConnected:    func() Response { return &SlaveConnectedResponse{} },
+	protocol.StartReplication:  func() Response { return &StartReplicationResponse{} },
+	protocol.StopReplication:   func() Response { return &StopReplicationResponse{} },
+	protocol.SyncData:          func() Response { return &SyncDataResponse{} },
+	protocol.ReplicationStatus: func() Response { return &ReplicationStatusResponse{} },
+	protocol.ReplicationLag:    func() Response { return &ReplicationLagResponse{} },
+	protocol.PromoteToMaster:   func() Response { return &PromoteToMasterResponse{} },
+	protocol.DemoteToSlave:     func() Response { return &DemoteToSlaveResponse{} },
 
 	// Authentication & User Management
-	case protocol.Login:
-		resp = &LoginResponse{}
+	protocol.Login:           func() Response { return &LoginResponse{} },
+	protocol.Logout:          func() Response { return &LogoutResponse{} },
+	protocol.CreateUser:      func() Response { return &CreateUserResponse{} },
+	protocol.DropUser:        func() Response { return &DropUserResponse{} },
+	protocol.GrantPrivilege:  func() Response { return &GrantPrivilegeResponse{} },
+	protocol.RevokePrivilege: func() Response { return &RevokePrivilegeResponse{} },
+	protocol.ChangePassword:  func() Response { return &ChangePasswordResponse{} },
 
 	// Utility Commands
-	case protocol.Ping:
-		resp = &PingResponse{}
-	case protocol.Pong:
-		resp = &PongResponse{}
-	case protocol.Greeting:
-		resp = &GreetingResponse{}
-	case protocol.Welcome:
-		resp = &WelcomeResponse{}
+	protocol.Ping:     func() Response { return &PingResponse{} },
+	protocol.Pong:     func() Response { return &PongResponse{} },
+	protocol.Greeting: func() Response { return &GreetingResponse{} },
+	protocol.Welcome:  func() Response { return &WelcomeResponse{} },
 
-	default:
+	// Cluster Management
+	protocol.JoinCluster:   func() Response { return &JoinClusterResponse{} },
+	protocol.LeaveCluster:  func() Response { return &LeaveClusterResponse{} },
+	protocol.ClusterStatus: func() Response { return &ClusterStatusResponse{} },
+	protocol.ElectLeader:   func() Response { return &ElectLeaderResponse{} },
+
+	// Backup & Restore
+	protocol.StartBackup:  func() Response { return &StartBackupResponse{} },
+	protocol.StopBackup:   func() Response { return &StopBackupResponse{} },
+	protocol.Restore:      func() Response { return &RestoreResponse{} },
+	protocol.BackupStatus: func() Response { return &BackupStatusResponse{} },
+
+	// Monitoring & Metrics
+	protocol.GetMetrics:  func() Response { return &GetMetricsResponse{} },
+	protocol.GetLogs:     func() Response { return &GetLogsResponse{} },
+	protocol.HealthCheck: func() Response { return &HealthCheckResponse{} },
+
+	// Configuration Management
+	protocol.SetConfig:    func() Response { return &SetConfigResponse{} },
+	protocol.GetConfig:    func() Response { return &GetConfigResponse{} },
+	protocol.ReloadConfig: func() Response { return &ReloadConfigResponse{} },
+
+	// Custom Commands
+	protocol.CustomCommand: func() Response { return &CustomCommandResponse{} },
+}
+
+// DeserializeResponse deserializa un mensaje en la respuesta correspondiente.
+func Deserialize(messageType protocol.MessageType, data []byte) (Response, error) {
+	constructor, ok := responseMap[messageType]
+	if !ok {
 		return nil, NewErrUnsupportedResponse()
 	}
 
+	resp := constructor()
 	return resp, resp.FromBytes(data)
 }

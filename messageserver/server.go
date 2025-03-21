@@ -130,3 +130,7 @@ func (s *MessageServer) GetRandomNode() *nodes.Node {
 func (s *MessageServer) SendToAllSlaves(msg *transport.Message) []*transport.ExecutionResult {
 	return s.nodeManager.SendToAllSlaves(msg)
 }
+
+func (c *MessageServer) Addr() string {
+	return c.address
+}
