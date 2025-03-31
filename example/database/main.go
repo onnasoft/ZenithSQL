@@ -4,24 +4,52 @@ import (
 	"fmt"
 
 	"github.com/onnasoft/ZenithSQL/dataframe"
+	"github.com/onnasoft/ZenithSQL/validate"
+	"github.com/sirupsen/logrus"
 )
 
+var log = logrus.New()
+
 func main() {
-	db := dataframe.NewDatabase("testdb")
-	schema := db.CreateSchema("public")
-	table := schema.CreateTable("users").
-		AddColumn("name", dataframe.StringType, 5).
-		AddColumn("email", dataframe.StringType, 200)
+	db, err := dataframe.NewDatabase("testdb", "./data")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	table.Insert("Jhon Doe", "jhondoe@gmail.com")
-	table.Insert("Javier Xar", "xarjavier@gmail.com")
-	fmt.Println(table.Insert("asdasss", "asdas"))
+	schema, err := db.CreateSchema("public")
+	if err != nil {
+		log.Fatal(err)
+	}
+	table, err := schema.CreateTable("users")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := table.AddColumn("name", dataframe.StringType, 10); err != nil {
+		log.Fatal(err)
+	}
+	if err := table.AddColumn("email", dataframe.StringType, 20, validate.IsEmail{}); err != nil {
+		log.Fatal(err)
+	}
 
-	fmt.Println("Table Name:", table.Name)
-	fmt.Println("Table Columns:")
-	for _, col := range table.Columns {
-		fmt.Printf(" - %s (%s)\n", col.Name, col.Type.String())
+	log.Info("Table created successfully")
+	log.Info("Table reserved: ", table.ReservedSize())
+
+	if err := table.Insert("Jhon Doe", "jhondoe@gmail.com"); err != nil {
+		log.Fatal(err)
+	}
+	if err := table.Insert("Javier Xar", "xarjavier@gmail.com"); err != nil {
+		log.Fatal(err)
 	}
 
 	table.Print()
+
+	for i := int64(1); i <= table.Length(); i++ {
+		row, err := table.Get(i, &dataframe.Columns{
+			table.Columns.Get(0),
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(row)
+	}
 }

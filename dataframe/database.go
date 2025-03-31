@@ -1,13 +1,39 @@
 package dataframe
 
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	logrus "github.com/sirupsen/logrus"
+)
+
+var log = logrus.New()
+
 type Database struct {
 	Name    string
+	Path    string
 	Schemas map[string]*Schema
 }
 
-func NewDatabase(name string) *Database {
+func NewDatabase(name, path string) (*Database, error) {
+	fullPath := filepath.Join(path, name)
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		log.Error("failed to create database directory", err)
+		return nil, fmt.Errorf("failed to create database directory: %v", err)
+	}
 	return &Database{
 		Name:    name,
+		Path:    fullPath,
 		Schemas: make(map[string]*Schema),
+	}, nil
+}
+
+func (db *Database) CreateSchema(name string) (*Schema, error) {
+	schema, err := NewSchema(name, filepath.Join(db.Path, name))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create schema: %v", err)
 	}
+	db.Schemas[name] = schema
+	return schema, nil
 }
