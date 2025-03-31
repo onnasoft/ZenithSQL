@@ -18,8 +18,8 @@ type Table struct {
 	reservedSize   int
 	effectiveSize  int
 	File           *os.File
-	writeAllocator *allocator.ZeroMemoryAllocator // Allocator for writing, with fixed reserved size
-	readAllocator  *allocator.ZeroMemoryAllocator // Allocator for reading, with dynamic size based on the row
+	writeAllocator *allocator.ZeroMemoryAllocator
+	readAllocator  *allocator.ZeroMemoryAllocator
 }
 
 func NewTable(name, path string) (*Table, error) {
@@ -28,7 +28,6 @@ func NewTable(name, path string) (*Table, error) {
 		return nil, fmt.Errorf("failed to create table directory: %v", err)
 	}
 
-	// Open the file for storing data
 	filePath := filepath.Join(fullPath, "data.bin")
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
@@ -46,9 +45,9 @@ func NewTable(name, path string) (*Table, error) {
 		},
 		File: file,
 	}
-	t.reservedSize = 2048                        // Fixed reserved size for each row (2048 bytes)
-	t.effectiveSize = t.calculateEffectiveSize() // Calculate the effective size based on the columns
-	// Allocators for reading and writing
+	t.reservedSize = 2048
+	t.effectiveSize = t.calculateEffectiveSize()
+
 	t.writeAllocator = allocator.NewZeroMemoryAllocator(100, func() interface{} {
 		return make([]byte, t.reservedSize)
 	})
@@ -68,19 +67,16 @@ func (t *Table) GetNextId() int64 {
 
 func (t *Table) setColumnPositions() {
 	offset := 0
-	for i, col := range *t.Columns {
-		col.StartPosition = offset
-		col.EndPosition = offset + col.Length
-		col.NullFlagPos = offset + len(*t.Columns)*1
+	for _, col := range *t.Columns {
+		col.Prepare(offset)
 		offset += col.Length + 1
-		(*t.Columns)[i] = col
 	}
 }
 
 func (t *Table) calculateEffectiveSize() int {
 	size := 0
 	for _, col := range *t.Columns {
-		size += col.Length + 1 // +1 for the null flag
+		size += col.Length + 1
 	}
 	return size
 }
@@ -90,7 +86,7 @@ func (t *Table) AddColumn(name string, typ entity.DataType, length int, validato
 		return fmt.Errorf("invalid length for type %s", typ.String())
 	}
 
-	col := entity.Field{
+	col := &entity.Field{
 		Name:       name,
 		Type:       typ,
 		Length:     length,
@@ -101,11 +97,11 @@ func (t *Table) AddColumn(name string, typ entity.DataType, length int, validato
 	}
 
 	t.Columns.Add(col)
-	t.reservedSize = 2048 // Fixed reserved size for each row (2048 bytes)
+	t.reservedSize = 2048
 
-	t.setColumnPositions()
+	col.Prepare(t.effectiveSize)
+	t.effectiveSize += col.Length + 1
 
-	t.effectiveSize = t.calculateEffectiveSize()
 	t.readAllocator.Reset()
 	t.readAllocator = allocator.NewZeroMemoryAllocator(100, func() interface{} {
 		return make([]byte, t.effectiveSize)
@@ -172,7 +168,6 @@ func (t *Table) Close() {
 func (t *Table) readRowFromFile(id int64, row *entity.Entity) error {
 	offset := (id - 1) * int64(t.reservedSize)
 
-	// Allocate memory for reading with the effective size
 	buff, err := t.readAllocator.Allocate()
 	if err != nil {
 		return fmt.Errorf("failed to allocate memory for row %d: %v", id, err)
@@ -180,12 +175,10 @@ func (t *Table) readRowFromFile(id int64, row *entity.Entity) error {
 	defer t.readAllocator.Release(buff)
 	buffer := buff.([]byte)
 
-	// Read the data into the buffer
 	if _, err := t.File.ReadAt(buffer, offset); err != nil {
 		return fmt.Errorf("failed to read row %d: %v", id, err)
 	}
 
-	// Parse the row data from the buffer
 	err = row.Read(buffer)
 	if err != nil {
 		return fmt.Errorf("failed to parse row %d: %v", id, err)
@@ -214,6 +207,7 @@ func (t *Table) Length() int64 {
 func (t *Table) EffectiveSize() int {
 	return t.effectiveSize
 }
+
 func (t *Table) ReservedSize() int {
 	return t.reservedSize
 }

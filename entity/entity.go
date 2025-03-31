@@ -147,7 +147,7 @@ func writeNullFlag(buffer []byte, nullFlagPos int, val interface{}) byte {
 	return isNull
 }
 
-func writeValue(buffer []byte, field Field, val interface{}) error {
+func writeValue(buffer []byte, field *Field, val interface{}) error {
 	switch field.Type {
 	case Int8Type:
 		buffer[field.StartPosition] = uint8(val.(int64))

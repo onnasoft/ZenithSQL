@@ -21,30 +21,36 @@ type Field struct {
 	NullFlagPos   int
 }
 
-type Fields []Field
+type Fields []*Field
 
 func (f Fields) Len() int {
 	return len(f)
 }
 
-func (f Fields) Get(index int) (Field, error) {
+func (f *Field) Prepare(offset int) {
+	f.NullFlagPos = offset
+	f.StartPosition = offset + 1
+	f.EndPosition = f.StartPosition + f.Length
+}
+
+func (f Fields) Get(index int) (*Field, error) {
 	if index < 0 || index >= len(f) {
-		return Field{}, errors.New(errIndexOutOfRange)
+		return &Field{}, errors.New(errIndexOutOfRange)
 	}
 	return f[index], nil
 }
 
-func (f *Fields) Insert(index int, field Field) error {
+func (f *Fields) Insert(index int, field *Field) error {
 	if index < 0 || index > len(*f) {
 		return errors.New(errIndexOutOfRange)
 	}
-	*f = append(*f, Field{})
+	*f = append(*f, &Field{})
 	copy((*f)[index+1:], (*f)[index:])
 	(*f)[index] = field
 	return nil
 }
 
-func (f *Fields) Add(field Field) {
+func (f *Fields) Add(field *Field) {
 	*f = append(*f, field)
 }
 
