@@ -125,7 +125,6 @@ func (e *Entity) Write(buffer []byte) error {
 		// Write null flag
 		isSetted := writeSettedFlag(buffer, field.IsSettedFlagPos, val)
 		if isSetted == 0 {
-			log.Println("Field is not set:", field.Name)
 			continue
 		}
 
