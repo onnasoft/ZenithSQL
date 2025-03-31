@@ -48,7 +48,7 @@ func main() {
 
 	records := make([]*entity.Entity, len(users))
 	for user := range users {
-		record, err := entity.NewEntity(table.Columns)
+		record, err := entity.NewEntity(table.Fields)
 		if err != nil {
 			log.Fatal("Error creating entity: ", err)
 		}
@@ -72,9 +72,9 @@ func main() {
 
 	table.Print()
 
-	columns := *table.Columns
+	fields := table.Fields
 	for i := int64(1); i <= table.Length(); i++ {
-		record, err := entity.NewEntity(&columns)
+		record, err := entity.NewEntity(fields)
 		if err != nil {
 			log.Fatal("Error creating row: ", err)
 		}

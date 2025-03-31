@@ -12,13 +12,13 @@ const (
 )
 
 type Field struct {
-	Name          string
-	Type          DataType
-	Length        int
-	Validators    []validate.Validator
-	StartPosition int
-	EndPosition   int
-	NullFlagPos   int
+	Name            string
+	Type            DataType
+	Length          int
+	Validators      []validate.Validator
+	StartPosition   int
+	EndPosition     int
+	IsSettedFlagPos int
 }
 
 type Fields []*Field
@@ -28,7 +28,7 @@ func (f Fields) Len() int {
 }
 
 func (f *Field) Prepare(offset int) {
-	f.NullFlagPos = offset
+	f.IsSettedFlagPos = offset
 	f.StartPosition = offset + 1
 	f.EndPosition = f.StartPosition + f.Length
 }

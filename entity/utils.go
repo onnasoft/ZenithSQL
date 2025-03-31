@@ -2,10 +2,69 @@ package entity
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strings"
 	"time"
 )
+
+var writerTypes = map[DataType]func(buffer []byte, field *Field, val interface{}) error{
+	Int8Type: func(buffer []byte, field *Field, val interface{}) error {
+		buffer[field.StartPosition] = uint8(val.(int64))
+		return nil
+	},
+	Int16Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(val.(int64)))
+		return nil
+	},
+	Int32Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(val.(int64)))
+		return nil
+	},
+	Int64Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(int64)))
+		return nil
+	},
+	Uint8Type: func(buffer []byte, field *Field, val interface{}) error {
+		buffer[field.StartPosition] = uint8(val.(int64))
+		return nil
+	},
+	Uint16Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(val.(int64)))
+		return nil
+	},
+	Uint32Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(val.(int64)))
+		return nil
+	},
+	Uint64Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(int64)))
+		return nil
+	},
+	Float32Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], math.Float32bits(val.(float32)))
+		return nil
+	},
+	Float64Type: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], math.Float64bits(val.(float64)))
+		return nil
+	},
+	StringType: func(buffer []byte, field *Field, val interface{}) error {
+		str := val.(string)
+		if len(str) > field.Length {
+			return fmt.Errorf("string length exceeds maximum length of %d", field.Length)
+		}
+		copy(buffer[field.StartPosition:], str)
+		for j := len(str); j < field.Length; j++ {
+			buffer[field.StartPosition+j] = 0
+		}
+		return nil
+	},
+	TimestampType: func(buffer []byte, field *Field, val interface{}) error {
+		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(time.Time).UnixNano()))
+		return nil
+	},
+}
 
 var parseTypes = map[DataType]func([]byte) interface{}{
 	Int8Type: func(b []byte) interface{} {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/onnasoft/ZenithSQL/allocator"
 	"github.com/onnasoft/ZenithSQL/entity"
@@ -13,7 +14,7 @@ import (
 type Table struct {
 	Name           string
 	Path           string
-	Columns        *entity.Fields
+	Fields         *entity.Fields
 	length         int64
 	reservedSize   int
 	effectiveSize  int
@@ -37,7 +38,7 @@ func NewTable(name, path string) (*Table, error) {
 	t := &Table{
 		Name: name,
 		Path: fullPath,
-		Columns: &entity.Fields{
+		Fields: &entity.Fields{
 			{Name: "id", Type: entity.Int64Type, Length: 8},
 			{Name: "created_at", Type: entity.TimestampType, Length: 8},
 			{Name: "updated_at", Type: entity.TimestampType, Length: 8},
@@ -67,7 +68,7 @@ func (t *Table) GetNextId() int64 {
 
 func (t *Table) setColumnPositions() {
 	offset := 0
-	for _, col := range *t.Columns {
+	for _, col := range *t.Fields {
 		col.Prepare(offset)
 		offset += col.Length + 1
 	}
@@ -75,7 +76,7 @@ func (t *Table) setColumnPositions() {
 
 func (t *Table) calculateEffectiveSize() int {
 	size := 0
-	for _, col := range *t.Columns {
+	for _, col := range *t.Fields {
 		size += col.Length + 1
 	}
 	return size
@@ -96,7 +97,7 @@ func (t *Table) AddColumn(name string, typ entity.DataType, length int, validato
 		col.Validators = append(col.Validators, validate.StringLengthValidator{Min: 0, Max: length})
 	}
 
-	t.Columns.Add(col)
+	t.Fields.Add(col)
 	t.reservedSize = 2048
 
 	col.Prepare(t.effectiveSize)
@@ -113,10 +114,16 @@ func (t *Table) AddColumn(name string, typ entity.DataType, length int, validato
 func (t *Table) Insert(entities ...*entity.Entity) error {
 	id := t.GetNextId()
 	for _, entity := range entities {
+		if entity.GetByName("created_at") == nil {
+			entity.SetByName("created_at", time.Now())
+		}
+		if entity.GetByName("updated_at") == nil {
+			entity.SetByName("updated_at", time.Now())
+		}
 
-		userColumns := t.Columns.Len()
-		if entity.Len() != userColumns {
-			return fmt.Errorf("expected %d values, got %d", userColumns, entity.Values())
+		userfields := t.Fields.Len()
+		if entity.Len() != userfields {
+			return fmt.Errorf("expected %d values, got %d", userfields, entity.Values())
 		}
 		entity.SetByName("id", id)
 		if err := t.writeRowToFile(entity); err != nil {
@@ -214,22 +221,22 @@ func (t *Table) ReservedSize() int {
 
 func (t *Table) Print() {
 	fmt.Println("Table Name:", t.Name)
-	fmt.Println("Table Columns:")
+	fmt.Println("Table fields:")
 	format := " - %s (%s)\n"
-	columns := *t.Columns
+	fields := *t.Fields
 
-	if columns.Len() < 4 {
-		fmt.Printf(format, columns[0].Name, columns[0].Type.String())
+	if fields.Len() < 4 {
+		fmt.Printf(format, fields[0].Name, fields[0].Type.String())
 
-		for i := 4; i < t.Columns.Len(); i++ {
-			fmt.Printf(format, columns[i].Name, columns[i].Type.String())
+		for i := 4; i < t.Fields.Len(); i++ {
+			fmt.Printf(format, fields[i].Name, fields[i].Type.String())
 		}
-		fmt.Printf(format, columns[1].Name, columns[1].Type.String())
-		fmt.Printf(format, columns[2].Name, columns[2].Type.String())
-		fmt.Printf(format, columns[3].Name, columns[3].Type.String())
+		fmt.Printf(format, fields[1].Name, fields[1].Type.String())
+		fmt.Printf(format, fields[2].Name, fields[2].Type.String())
+		fmt.Printf(format, fields[3].Name, fields[3].Type.String())
 	} else {
-		for i := 0; i < columns.Len(); i++ {
-			fmt.Printf(format, columns[i].Name, columns[i].Type.String())
+		for i := 0; i < fields.Len(); i++ {
+			fmt.Printf(format, fields[i].Name, fields[i].Type.String())
 		}
 	}
 

@@ -1,11 +1,8 @@
 package entity
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math"
 	"strings"
-	"time"
 
 	"log"
 )
@@ -77,7 +74,7 @@ func (e Entity) Set(index interface{}, value interface{}) error {
 	return nil
 }
 
-func (e *Entity) SetByIndex(index int, value interface{}, ignoreValidation ...bool) error {
+func (e *Entity) SetByIndex(index int, value interface{}) error {
 	if index < 0 || index >= len(e.values) {
 		return fmt.Errorf("index %d out of range", index)
 	}
@@ -86,12 +83,10 @@ func (e *Entity) SetByIndex(index int, value interface{}, ignoreValidation ...bo
 	if err != nil {
 		return fmt.Errorf("failed to get field %d: %v", index, err)
 	}
-	if len(ignoreValidation) == 0 || !ignoreValidation[0] {
-		if !isValidType(field.Type, value) {
-			log.Println("Value type mismatch for field:", field.Name, "expected:", field.Type, "got:", value)
+	if !isValidType(field.Type, value) {
+		log.Println("Value type mismatch for field:", field.Name, "expected:", field.Type, "got:", value)
 
-			return fmt.Errorf("invalid type %T for field %s, expected %s", value, field.Name, field.Type)
-		}
+		return fmt.Errorf("invalid type %T for field %s, expected %s", value, field.Name, field.Type)
 	}
 	for _, validator := range field.Validators {
 		if err := validator.Validate(value, field.Name); err != nil {
@@ -128,9 +123,14 @@ func (e *Entity) Write(buffer []byte) error {
 		val := e.GetByName(field.Name)
 
 		// Write null flag
-		isNull := writeNullFlag(buffer, field.NullFlagPos, val)
-		if isNull == 0 {
-			if err := writeValue(buffer, field, val); err != nil {
+		isSetted := writeSettedFlag(buffer, field.IsSettedFlagPos, val)
+		if isSetted == 0 {
+			log.Println("Field is not set:", field.Name)
+			continue
+		}
+
+		if writerFunc, ok := writerTypes[field.Type]; ok {
+			if err := writerFunc(buffer, field, val); err != nil {
 				return err
 			}
 		}
@@ -138,59 +138,20 @@ func (e *Entity) Write(buffer []byte) error {
 	return nil
 }
 
-func writeNullFlag(buffer []byte, nullFlagPos int, val interface{}) byte {
-	var isNull byte
+func writeSettedFlag(buffer []byte, isSettedFlagPos int, val interface{}) byte {
+	var isSetted byte = 1
 	if val == nil {
-		isNull = 1
+		isSetted = 0
 	}
-	buffer[nullFlagPos] = isNull
-	return isNull
-}
-
-func writeValue(buffer []byte, field *Field, val interface{}) error {
-	switch field.Type {
-	case Int8Type:
-		buffer[field.StartPosition] = uint8(val.(int64))
-	case Int16Type:
-		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(val.(int64)))
-	case Int32Type:
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(val.(int64)))
-	case Int64Type:
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(int64)))
-	case Uint8Type:
-		buffer[field.StartPosition] = uint8(val.(int64))
-	case Uint16Type:
-		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(val.(int64)))
-	case Uint32Type:
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(val.(int64)))
-	case Uint64Type:
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(int64)))
-	case Float32Type:
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], math.Float32bits(val.(float32)))
-	case Float64Type:
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], math.Float64bits(val.(float64)))
-	case StringType:
-		str := val.(string)
-		if len(str) > field.Length {
-			return fmt.Errorf("string length exceeds maximum length of %d", field.Length)
-		}
-		copy(buffer[field.StartPosition:], str)
-		for j := len(str); j < field.Length; j++ {
-			buffer[field.StartPosition+j] = 0
-		}
-	case TimestampType:
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(time.Time).UnixNano()))
-	default:
-		return fmt.Errorf("unsupported type %s for column %s", field.Type.String(), field.Name)
-	}
-	return nil
+	buffer[isSettedFlagPos] = isSetted
+	return isSetted
 }
 
 func (e *Entity) Read(buffer []byte) error {
 	for _, field := range *e.fields {
-		isNull := buffer[field.NullFlagPos]
+		isSetted := buffer[field.IsSettedFlagPos]
 
-		if isNull == 1 {
+		if isSetted == 0 {
 			continue
 		}
 
@@ -210,8 +171,8 @@ func (e *Entity) Read(buffer []byte) error {
 			return fmt.Errorf("failed to parse value for column %s", field.Name)
 		}
 
-		if err := e.SetByName(field.Name, value); err != nil {
-			return fmt.Errorf("failed to set value for column %s: %v", field.Name, err)
+		if index, ok := e.fieldsMap[field.Name]; ok {
+			e.values[index] = value
 		}
 	}
 
