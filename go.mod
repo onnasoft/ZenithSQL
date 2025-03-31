@@ -13,6 +13,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/oklog/ulid/v2 v2.1.0
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.59.0
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
