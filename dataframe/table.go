@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/onnasoft/ZenithSQL/allocator"
+	"github.com/onnasoft/ZenithSQL/entity"
 	"github.com/onnasoft/ZenithSQL/validate"
 )
 
 type Table struct {
 	Name           string
 	Path           string
-	Columns        *Columns
+	Columns        *entity.Fields
 	length         int64
 	reservedSize   int
 	effectiveSize  int
@@ -38,11 +38,11 @@ func NewTable(name, path string) (*Table, error) {
 	t := &Table{
 		Name: name,
 		Path: fullPath,
-		Columns: &Columns{
-			{Name: "id", Type: Int64Type, Length: 8},
-			{Name: "created_at", Type: TimestampType, Length: 8},
-			{Name: "updated_at", Type: TimestampType, Length: 8},
-			{Name: "deleted_at", Type: TimestampType, Length: 8},
+		Columns: &entity.Fields{
+			{Name: "id", Type: entity.Int64Type, Length: 8},
+			{Name: "created_at", Type: entity.TimestampType, Length: 8},
+			{Name: "updated_at", Type: entity.TimestampType, Length: 8},
+			{Name: "deleted_at", Type: entity.TimestampType, Length: 8},
 		},
 		File: file,
 	}
@@ -62,6 +62,10 @@ func NewTable(name, path string) (*Table, error) {
 	return t, nil
 }
 
+func (t *Table) GetNextId() int64 {
+	return t.length + 1
+}
+
 func (t *Table) setColumnPositions() {
 	offset := 0
 	for i, col := range *t.Columns {
@@ -76,23 +80,23 @@ func (t *Table) setColumnPositions() {
 func (t *Table) calculateEffectiveSize() int {
 	size := 0
 	for _, col := range *t.Columns {
-		size += col.Length + 1 // +1 for null value
+		size += col.Length + 1 // +1 for the null flag
 	}
 	return size
 }
 
-func (t *Table) AddColumn(name string, typ DataType, length int, validators ...validate.Validator) error {
+func (t *Table) AddColumn(name string, typ entity.DataType, length int, validators ...validate.Validator) error {
 	if length <= 0 {
 		return fmt.Errorf("invalid length for type %s", typ.String())
 	}
 
-	col := Column{
+	col := entity.Field{
 		Name:       name,
 		Type:       typ,
 		Length:     length,
 		Validators: validators,
 	}
-	if typ == StringType && length > 0 {
+	if typ == entity.StringType && length > 0 {
 		col.Validators = append(col.Validators, validate.StringLengthValidator{Min: 0, Max: length})
 	}
 
@@ -110,76 +114,52 @@ func (t *Table) AddColumn(name string, typ DataType, length int, validators ...v
 	return nil
 }
 
-func (t *Table) Insert(values ...interface{}) error {
-	userColumns := t.Columns.Len() - 4
-	if len(values) != userColumns {
-		return fmt.Errorf("expected %d values, got %d", userColumns, len(values))
-	}
+func (t *Table) Insert(entities ...*entity.Entity) error {
+	id := t.GetNextId()
+	for _, entity := range entities {
 
-	now := time.Now().UnixNano()
-	row := NewRow(t.Columns)
-	row.Set(0, int64(t.length+1))
-	row.Set(1, now)
-	row.Set(2, now)
-	row.Set(3, nil)
-
-	for i, val := range values {
-		col := t.Columns.Get(i + 4)
-
-		if !isValidType(col.Type, val) {
-			return fmt.Errorf("column '%s' expects %s, got %T", col.Name, col.Type.String(), val)
+		userColumns := t.Columns.Len()
+		if entity.Len() != userColumns {
+			return fmt.Errorf("expected %d values, got %d", userColumns, entity.Values())
+		}
+		entity.SetByName("id", id)
+		if err := t.writeRowToFile(entity); err != nil {
+			return err
 		}
 
-		for _, validator := range col.Validators {
-			if err := validator.Validate(val, col.Name); err != nil {
-				return err
-			}
-		}
-
-		row.Set(i+4, val)
-	}
-
-	if err := t.writeRowToFile(row); err != nil {
-		return err
+		id++
 	}
 
 	return nil
 }
 
-func (t *Table) writeRowToFile(row *Row) error {
-	// Allocate memory for writing
+func (t *Table) writeRowToFile(entity *entity.Entity) error {
 	buff, err := t.writeAllocator.Allocate()
 	if err != nil {
 		return fmt.Errorf("failed to allocate memory for row: %v", err)
 	}
 	defer t.writeAllocator.Release(buff)
 
-	// Convert the buffer to a byte slice
 	buffer := buff.([]byte)
 
-	// Iterate over each column in the row and write the values
-	err = row.Write(buffer)
+	err = entity.Write(buffer)
 	if err != nil {
 		return fmt.Errorf("failed to write row to buffer: %v", err)
 	}
 
-	// Fill the remaining space with padding to ensure 2048 bytes
 	for i := len(buffer); i < t.reservedSize; i++ {
 		buffer[i] = 0
 	}
 
-	// Write the row to the file at the appropriate offset
 	offset := (t.length) * int64(t.reservedSize)
 	if _, err := t.File.WriteAt(buffer, offset); err != nil {
 		return fmt.Errorf("failed to write row to file: %v", err)
 	}
 
-	// Flush the file to ensure the data is written
 	if err := t.File.Sync(); err != nil {
 		return fmt.Errorf("failed to sync file: %v", err)
 	}
 
-	// Increment row length
 	t.length++
 
 	return nil
@@ -189,43 +169,42 @@ func (t *Table) Close() {
 	t.File.Close()
 }
 
-func (t *Table) readRowFromFile(id int64, columns *Columns) (*Row, error) {
-	row := NewRow(columns)
+func (t *Table) readRowFromFile(id int64, row *entity.Entity) error {
 	offset := (id - 1) * int64(t.reservedSize)
 
 	// Allocate memory for reading with the effective size
 	buff, err := t.readAllocator.Allocate()
 	if err != nil {
-		return nil, fmt.Errorf("failed to allocate memory for row %d: %v", id, err)
+		return fmt.Errorf("failed to allocate memory for row %d: %v", id, err)
 	}
 	defer t.readAllocator.Release(buff)
 	buffer := buff.([]byte)
 
 	// Read the data into the buffer
 	if _, err := t.File.ReadAt(buffer, offset); err != nil {
-		return nil, fmt.Errorf("failed to read row %d: %v", id, err)
+		return fmt.Errorf("failed to read row %d: %v", id, err)
 	}
 
 	// Parse the row data from the buffer
 	err = row.Read(buffer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse row %d: %v", id, err)
+		return fmt.Errorf("failed to parse row %d: %v", id, err)
 	}
 
-	return row, nil
+	return nil
 }
 
-func (t *Table) Get(id int64, columns *Columns) (*Row, error) {
-	if id < 0 || id > t.length {
-		return nil, fmt.Errorf("invalid row index %d", id)
+func (t *Table) Get(id int64, row *entity.Entity) error {
+	if id < 0 {
+		return fmt.Errorf("invalid row index %d", id)
 	}
 
-	row, err := t.readRowFromFile(id, columns)
+	err := t.readRowFromFile(id, row)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read row %d: %v", id, err)
+		return fmt.Errorf("failed to read row %d: %v", id, err)
 	}
 
-	return row, nil
+	return nil
 }
 
 func (t *Table) Length() int64 {
@@ -243,14 +222,22 @@ func (t *Table) Print() {
 	fmt.Println("Table Name:", t.Name)
 	fmt.Println("Table Columns:")
 	format := " - %s (%s)\n"
-	fmt.Printf(format, t.Columns.Get(0).Name, t.Columns.Get(0).Type.String())
+	columns := *t.Columns
 
-	for i := 4; i < t.Columns.Len(); i++ {
-		fmt.Printf(format, t.Columns.Get(i).Name, t.Columns.Get(i).Type.String())
+	if columns.Len() < 4 {
+		fmt.Printf(format, columns[0].Name, columns[0].Type.String())
+
+		for i := 4; i < t.Columns.Len(); i++ {
+			fmt.Printf(format, columns[i].Name, columns[i].Type.String())
+		}
+		fmt.Printf(format, columns[1].Name, columns[1].Type.String())
+		fmt.Printf(format, columns[2].Name, columns[2].Type.String())
+		fmt.Printf(format, columns[3].Name, columns[3].Type.String())
+	} else {
+		for i := 0; i < columns.Len(); i++ {
+			fmt.Printf(format, columns[i].Name, columns[i].Type.String())
+		}
 	}
-	fmt.Printf(format, t.Columns.Get(1).Name, t.Columns.Get(1).Type.String())
-	fmt.Printf(format, t.Columns.Get(2).Name, t.Columns.Get(2).Type.String())
-	fmt.Printf(format, t.Columns.Get(3).Name, t.Columns.Get(3).Type.String())
 
 	fmt.Println("Table Length:", t.length)
 	fmt.Println("Table Reserved Size:", t.reservedSize)

@@ -1,4 +1,4 @@
-package dataframe
+package entity
 
 type DataType int
 

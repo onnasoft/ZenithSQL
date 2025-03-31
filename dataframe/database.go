@@ -22,6 +22,10 @@ func NewDatabase(name, path string) (*Database, error) {
 		log.Error("failed to create database directory", err)
 		return nil, fmt.Errorf("failed to create database directory: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Join(fullPath, "schemas"), 0755); err != nil {
+		log.Error("failed to create system directory", err)
+		return nil, fmt.Errorf("failed to create system directory: %v", err)
+	}
 	return &Database{
 		Name:    name,
 		Path:    fullPath,
@@ -30,7 +34,7 @@ func NewDatabase(name, path string) (*Database, error) {
 }
 
 func (db *Database) CreateSchema(name string) (*Schema, error) {
-	schema, err := NewSchema(name, filepath.Join(db.Path, name))
+	schema, err := NewSchema(name, filepath.Join(db.Path, "schemas", name))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create schema: %v", err)
 	}
