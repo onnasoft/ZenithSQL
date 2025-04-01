@@ -19,9 +19,8 @@ const (
 	defaultBufferSize  = 64
 	defaultCacheSize   = 1000
 	defaultWorkerCount = 8
-	minBufferSize      = 64   // Tamaño mínimo del buffer (reducido desde 1024)
-	maxBatchSize       = 1000 // Tamaño máximo del batch
-	minBatchWait       = 50 * time.Millisecond
+	minBufferSize      = 64
+	maxBatchSize       = 1000
 )
 
 type Table struct {
@@ -42,7 +41,6 @@ type Table struct {
 	schemaVersion int
 	insertMutex   sync.Mutex
 	batchBuffer   []byte
-	batchCount    int
 	fieldOffsets  []int
 	fieldIndex    map[string]int
 	paddingSize   int // Tamaño de padding adicional si es necesario
@@ -515,4 +513,68 @@ func (t *Table) EffectiveSize() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.effectiveSize
+}
+
+func (t *Table) BulkImport(entities []*entity.Entity, batchSize int) error {
+	if len(entities) == 0 {
+		return nil
+	}
+
+	// Validar batchSize
+	if batchSize <= 0 {
+		batchSize = maxBatchSize
+	} else if batchSize > maxBatchSize {
+		batchSize = maxBatchSize
+	}
+
+	// Calcular tamaño de fila
+	rowSize := t.calculateRowSize()
+
+	// Procesar en lotes
+	for start := 0; start < len(entities); start += batchSize {
+		end := start + batchSize
+		if end > len(entities) {
+			end = len(entities)
+		}
+
+		batch := entities[start:end]
+		if err := t.processBulkBatch(batch, rowSize); err != nil {
+			return fmt.Errorf("bulk import failed at batch %d-%d: %w", start, end, err)
+		}
+	}
+
+	return nil
+}
+
+func (t *Table) processBulkBatch(batch []*entity.Entity, rowSize int) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	now := time.Now()
+	buffer := make([]byte, len(batch)*rowSize)
+
+	for i, entity := range batch {
+		if entity.GetByName("created_at") == nil {
+			entity.SetByName("created_at", now)
+		}
+		if entity.GetByName("updated_at") == nil {
+			entity.SetByName("updated_at", now)
+		}
+		entity.SetByName("id", t.length+int64(i)+1)
+
+		start := i * rowSize
+		end := start + t.effectiveSize
+		if err := entity.Write(buffer[start:end]); err != nil {
+			return fmt.Errorf("failed to serialize entity %d: %w", i, err)
+		}
+	}
+
+	offset := t.length * int64(rowSize)
+	if _, err := t.file.WriteAt(buffer, offset); err != nil {
+		return fmt.Errorf("failed to write batch: %w", err)
+	}
+
+	t.length += int64(len(batch))
+
+	return nil
 }
