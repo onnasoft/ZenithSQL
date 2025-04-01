@@ -26,9 +26,10 @@ func NewEntity(fields *Fields) (*Entity, error) {
 	}
 
 	return &Entity{
-		fields:   fields,
-		values:   make([]interface{}, fields.Len()),
-		selected: make(map[string]struct{}),
+		checkValues: true,
+		fields:      fields,
+		values:      make([]interface{}, fields.Len()),
+		selected:    make(map[string]struct{}),
 	}, nil
 }
 
@@ -37,6 +38,18 @@ func (e *Entity) EnableValidation() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.checkValues = true
+}
+
+func (e *Entity) DisableValidation() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.checkValues = false
+}
+
+func (e *Entity) IsValidationEnabled() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.checkValues
 }
 
 // PrepareSelective configura la entidad para lectura/escritura selectiva

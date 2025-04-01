@@ -41,3 +41,15 @@ func (db *Database) CreateSchema(name string) (*Schema, error) {
 	db.Schemas[name] = schema
 	return schema, nil
 }
+
+func (db *Database) GetSchema(name string) (*Schema, error) {
+	schema, exists := db.Schemas[name]
+	if !exists {
+		return nil, fmt.Errorf("schema %s not found", name)
+	}
+	return schema, nil
+}
+
+func (db *Database) Close() error {
+	return nil
+}
