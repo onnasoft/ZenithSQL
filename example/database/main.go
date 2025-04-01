@@ -33,7 +33,7 @@ func main() {
 	}
 
 	log.Info("Table created successfully")
-	log.Info("Table reserved: ", table.ReservedSize())
+	log.Info("Table reserved: ", table.EffectiveSize())
 
 	users := []map[string]interface{}{
 		{
@@ -70,8 +70,6 @@ func main() {
 		log.Fatal("Error inserting records: ", err)
 	}
 
-	table.Print()
-
 	fields := table.Fields
 	for i := int64(1); i <= table.Length(); i++ {
 		record, err := entity.NewEntity(fields)
@@ -81,6 +79,6 @@ func main() {
 		if err := table.Get(i, record); err != nil {
 			log.Fatal("Error getting row: ", err)
 		}
-		log.Info(record.String())
+		log.Info(record)
 	}
 }

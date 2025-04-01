@@ -1,88 +1,311 @@
 package dataframe
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/onnasoft/ZenithSQL/allocator"
 	"github.com/onnasoft/ZenithSQL/entity"
 	"github.com/onnasoft/ZenithSQL/validate"
 )
 
+const (
+	defaultBatchSize   = 1
+	defaultBufferSize  = 64
+	defaultCacheSize   = 1000
+	defaultWorkerCount = 8
+	minBufferSize      = 64   // Tamaño mínimo del buffer (reducido desde 1024)
+	maxBatchSize       = 1000 // Tamaño máximo del batch
+	minBatchWait       = 50 * time.Millisecond
+)
+
 type Table struct {
-	Name           string
-	Path           string
-	Fields         *entity.Fields
-	length         int64
-	reservedSize   int
-	effectiveSize  int
-	File           *os.File
-	writeAllocator *allocator.ZeroMemoryAllocator
-	readAllocator  *allocator.ZeroMemoryAllocator
+	mu            sync.RWMutex
+	Name          string
+	Path          string
+	Fields        *entity.Fields
+	length        int64
+	effectiveSize int // Tamaño efectivo de los datos (calculado)
+	file          *os.File
+	writer        *bufio.Writer
+	reader        *bufio.Reader
+	writePool     *allocator.BufferPool
+	readPool      *allocator.BufferPool
+	cache         *lru.Cache[int64, []byte]
+	workerWg      sync.WaitGroup
+	stopWorkers   chan struct{}
+	schemaVersion int
+	insertMutex   sync.Mutex
+	batchBuffer   []byte
+	batchCount    int
+	fieldOffsets  []int
+	fieldIndex    map[string]int
+	paddingSize   int // Tamaño de padding adicional si es necesario
 }
 
+// NewTable crea una nueva tabla con tamaño de fila dinámico
 func NewTable(name, path string) (*Table, error) {
 	fullPath := filepath.Join(path, name)
 	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create table directory: %v", err)
+		return nil, fmt.Errorf("failed to create table directory: %w", err)
 	}
 
 	filePath := filepath.Join(fullPath, "data.bin")
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open data file: %v", err)
+		return nil, fmt.Errorf("failed to open data file: %w", err)
 	}
 
 	t := &Table{
-		Name: name,
-		Path: fullPath,
-		Fields: &entity.Fields{
-			{Name: "id", Type: entity.Int64Type, Length: 8},
-			{Name: "created_at", Type: entity.TimestampType, Length: 8},
-			{Name: "updated_at", Type: entity.TimestampType, Length: 8},
-			{Name: "deleted_at", Type: entity.TimestampType, Length: 8},
-		},
-		File: file,
+		Name:          name,
+		Path:          fullPath,
+		file:          file,
+		writer:        bufio.NewWriterSize(file, defaultBufferSize),
+		reader:        bufio.NewReader(file),
+		stopWorkers:   make(chan struct{}),
+		schemaVersion: 1,
+		fieldIndex:    make(map[string]int),
+		paddingSize:   0, // Inicialmente sin padding
 	}
-	t.reservedSize = 2048
+
+	// Initialize with default fields
+	defaultFields := entity.NewFields()
+	fields := []*entity.Field{
+		{
+			Name:   "id",
+			Type:   entity.Int64Type,
+			Length: 8,
+		},
+		{
+			Name:   "created_at",
+			Type:   entity.TimestampType,
+			Length: 8,
+		},
+		{
+			Name:   "updated_at",
+			Type:   entity.TimestampType,
+			Length: 8,
+		},
+		{
+			Name:   "deleted_at",
+			Type:   entity.TimestampType,
+			Length: 8,
+		},
+	}
+	for i := 0; i < len(fields); i++ {
+		field := fields[i]
+		field.Prepare(t.effectiveSize)
+		defaultFields.Add(field)
+		t.effectiveSize += field.Length + 1 // +1 for null indicator
+	}
+
+	t.Fields = defaultFields
 	t.effectiveSize = t.calculateEffectiveSize()
+	t.fieldOffsets = t.calculateFieldOffsets()
+	t.buildFieldIndex()
 
-	t.writeAllocator = allocator.NewZeroMemoryAllocator(100, func() interface{} {
-		return make([]byte, t.reservedSize)
-	})
+	// Calcular el tamaño de fila dinámico (effectiveSize + padding opcional)
+	rowSize := t.effectiveSize
+	if rowSize < minBufferSize {
+		// Añadir padding solo si es necesario para cumplir con el mínimo
+		t.paddingSize = minBufferSize - rowSize
+		rowSize = minBufferSize
+	}
 
-	t.readAllocator = allocator.NewZeroMemoryAllocator(100, func() interface{} {
-		return make([]byte, t.effectiveSize)
-	})
+	// Initialize pools and cache
+	t.writePool = allocator.NewBufferPool(100, rowSize)
+	t.readPool = allocator.NewBufferPool(100, t.effectiveSize)
+	t.cache, _ = lru.New[int64, []byte](defaultCacheSize)
 
-	t.setColumnPositions()
+	t.insertMutex = sync.Mutex{}
+	t.batchBuffer = make([]byte, maxBatchSize*rowSize)
 
 	return t, nil
 }
 
-func (t *Table) GetNextId() int64 {
-	return t.length + 1
-}
+// calculateRowSize calcula el tamaño total de fila necesario
+func (t *Table) calculateRowSize() int {
+	// Tamaño base es el effectiveSize
+	size := t.effectiveSize
 
-func (t *Table) setColumnPositions() {
-	offset := 0
-	for _, col := range *t.Fields {
-		col.Prepare(offset)
-		offset += col.Length + 1
-	}
-}
-
-func (t *Table) calculateEffectiveSize() int {
-	size := 0
-	for _, col := range *t.Fields {
-		size += col.Length + 1
+	// Añadir padding si es necesario para alineación u otros requisitos
+	// En este caso solo añadimos padding si es menor que el mínimo
+	if size < minBufferSize {
+		return minBufferSize
 	}
 	return size
 }
 
+// GetRowSize devuelve el tamaño actual de cada fila
+func (t *Table) GetRowSize() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.calculateRowSize()
+}
+
+// En los métodos que usan reservedSize, reemplazar con calculateRowSize()
+// Por ejemplo en insertSingle:
+
+func (t *Table) insertSingle(entity *entity.Entity) error {
+	t.insertMutex.Lock()
+	defer t.insertMutex.Unlock()
+
+	// Preparar la entidad
+	now := time.Now()
+	if entity.GetByName("created_at") == nil {
+		entity.SetByName("created_at", now)
+	}
+	if entity.GetByName("updated_at") == nil {
+		entity.SetByName("updated_at", now)
+	}
+	entity.SetByName("id", t.length+1)
+
+	// Usar tamaño de fila dinámico
+	rowSize := t.calculateRowSize()
+	buffer := make([]byte, rowSize)
+	if err := entity.Write(buffer[:t.effectiveSize]); err != nil {
+		return fmt.Errorf("failed to serialize entity: %w", err)
+	}
+
+	// Escribir directamente al archivo
+	offset := t.length * int64(rowSize)
+	if _, err := t.file.WriteAt(buffer, offset); err != nil {
+		return fmt.Errorf("failed to write entity: %w", err)
+	}
+
+	t.length++
+	return nil
+}
+
+// Modificar también processBatch para usar tamaño dinámico
+func (t *Table) processBatch(batch []*entity.Entity) error {
+	now := time.Now()
+	rowSize := t.calculateRowSize()
+	buffer := make([]byte, len(batch)*rowSize)
+
+	for i, entity := range batch {
+		if entity.GetByName("created_at") == nil {
+			entity.SetByName("created_at", now)
+		}
+		if entity.GetByName("updated_at") == nil {
+			entity.SetByName("updated_at", now)
+		}
+		entity.SetByName("id", t.length+int64(i)+1)
+
+		start := i * rowSize
+		end := start + t.effectiveSize
+		if err := entity.Write(buffer[start:end]); err != nil {
+			return fmt.Errorf("failed to serialize entity %d: %w", i, err)
+		}
+	}
+
+	offset := t.length * int64(rowSize)
+	if _, err := t.file.WriteAt(buffer, offset); err != nil {
+		return fmt.Errorf("failed to write batch: %w", err)
+	}
+
+	t.length += int64(len(batch))
+	return nil
+}
+
+// Modificar selectiveRead para usar tamaño dinámico
+func (t *Table) selectiveRead(id int64, record *entity.Entity) error {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	if id < 1 || id > t.length {
+		return fmt.Errorf("invalid id %d", id)
+	}
+
+	requiredOffsets := make(map[int]struct{})
+	for _, fieldName := range record.SelectedFields {
+		if idx, ok := t.fieldIndex[fieldName]; ok {
+			requiredOffsets[idx] = struct{}{}
+		}
+	}
+
+	rowSize := t.calculateRowSize()
+	for idx := range requiredOffsets {
+		offset := (id-1)*int64(rowSize) + int64(t.fieldOffsets[idx])
+		field, err := t.Fields.Get(idx)
+		if err != nil {
+			return fmt.Errorf("failed to get field %s: %w", field.Name, err)
+		}
+		buf := make([]byte, field.Length)
+
+		if _, err := t.file.ReadAt(buf, offset); err != nil {
+			return fmt.Errorf("failed to read field %s: %w", field.Name, err)
+		}
+
+		if err := record.SetFieldDirect(field.Name, buf); err != nil {
+			return fmt.Errorf("failed to set field %s: %w", field.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// buildFieldIndex crea un mapa rápido de nombres de campo a índices
+func (t *Table) buildFieldIndex() {
+	for i, field := range t.Fields.Iter() {
+		t.fieldIndex[field.Name] = i
+	}
+}
+
+// Get mantiene la firma original pero con soporte para lecturas selectivas
+func (t *Table) Get(id int64, record *entity.Entity) error {
+	// Configuración especial para lectura selectiva
+	if record.SelectiveRead {
+		return t.selectiveRead(id, record)
+	}
+
+	// Comportamiento normal para lectura completa
+	return t.fullRead(id, record)
+}
+
+// fullRead realiza una lectura completa tradicional
+func (t *Table) fullRead(id int64, record *entity.Entity) error {
+	// Check cache first
+	if cached, ok := t.cache.Get(id); ok {
+		if err := record.Read(cached); err != nil {
+			return fmt.Errorf("failed to deserialize cached entity: %w", err)
+		}
+		return nil
+	}
+
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	if id < 1 || id > t.length {
+		return fmt.Errorf("invalid id %d", id)
+	}
+
+	buffer := make([]byte, t.effectiveSize)
+
+	offset := (id - 1) * int64(t.effectiveSize)
+	if _, err := t.file.ReadAt(buffer, offset); err != nil {
+		return fmt.Errorf("failed to read row %d: %w", id, err)
+	}
+
+	if err := record.Read(buffer); err != nil {
+		return fmt.Errorf("failed to parse row %d: %w", id, err)
+	}
+
+	t.cache.Add(id, buffer)
+
+	return nil
+}
+
+// AddColumn añade una nueva columna manteniendo los índices actualizados
 func (t *Table) AddColumn(name string, typ entity.DataType, length int, validators ...validate.Validator) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	if length <= 0 {
 		return fmt.Errorf("invalid length for type %s", typ.String())
 	}
@@ -96,153 +319,200 @@ func (t *Table) AddColumn(name string, typ entity.DataType, length int, validato
 	if typ == entity.StringType && length > 0 {
 		col.Validators = append(col.Validators, validate.StringLengthValidator{Min: 0, Max: length})
 	}
-
-	t.Fields.Add(col)
-	t.reservedSize = 2048
-
 	col.Prepare(t.effectiveSize)
-	t.effectiveSize += col.Length + 1
+	t.Fields.Add(col)
+	t.schemaVersion++
+	t.effectiveSize = t.calculateEffectiveSize()
+	t.fieldOffsets = t.calculateFieldOffsets()
+	t.buildFieldIndex() // Reconstruir el índice
+	t.cache.Purge()     // Clear cache on schema change
 
-	t.readAllocator.Reset()
-	t.readAllocator = allocator.NewZeroMemoryAllocator(100, func() interface{} {
-		return make([]byte, t.effectiveSize)
-	})
+	// Reinitialize pools with new size
+	t.readPool = allocator.NewBufferPool(100, t.effectiveSize)
+	t.writePool = allocator.NewBufferPool(100, t.effectiveSize)
 
 	return nil
+}
+
+// BulkSum calcula la suma de un campo de forma optimizada
+func (t *Table) BulkSum(fieldName string) (float64, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	idx, ok := t.fieldIndex[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("field %s not found", fieldName)
+	}
+
+	field, err := t.Fields.Get(idx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get field %s: %w", fieldName, err)
+	}
+	if !field.IsNumeric() {
+		return 0, fmt.Errorf("field %s is not numeric", fieldName)
+	}
+
+	var sum float64
+	buf := make([]byte, field.Length)
+
+	for id := int64(1); id <= t.length; id++ {
+		offset := (id-1)*int64(t.effectiveSize) + int64(t.fieldOffsets[idx])
+		if _, err := t.file.ReadAt(buf, offset); err != nil {
+			return 0, fmt.Errorf("failed to read field %s at row %d: %w", fieldName, id, err)
+		}
+
+		val, err := field.DecodeNumeric(buf)
+		if err != nil {
+			return 0, fmt.Errorf("failed to decode field %s at row %d: %w", fieldName, id, err)
+		}
+		switch v := val.(type) {
+		case int64:
+			sum += float64(v)
+		case float32:
+			sum += float64(v)
+		case float64:
+			sum += v
+		default:
+			return 0, fmt.Errorf("unsupported type %T for field %s", v, fieldName)
+		}
+	}
+
+	return sum, nil
+}
+
+// BulkCount cuenta registros que cumplen con una condición
+func (t *Table) BulkCount(condition func(*entity.Entity) bool) (int64, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	var count int64
+	tempEntity := &entity.Entity{}
+
+	for id := int64(1); id <= t.length; id++ {
+		if err := t.fullRead(id, tempEntity); err != nil {
+			return 0, fmt.Errorf("failed to read row %d: %w", id, err)
+		}
+
+		if condition(tempEntity) {
+			count++
+		}
+		tempEntity.Reset()
+	}
+
+	return count, nil
+}
+
+func (t *Table) calculateEffectiveSize() int {
+	size := 0
+	for _, col := range t.Fields.Iter() {
+		size += col.Length + 1 // +1 for null indicator
+	}
+	return size
+}
+
+func (t *Table) calculateFieldOffsets() []int {
+	offsets := make([]int, t.Fields.Len())
+	offset := 0
+	for i, col := range t.Fields.Iter() {
+		offsets[i] = offset
+		offset += col.Length + 1
+	}
+	return offsets
 }
 
 func (t *Table) Insert(entities ...*entity.Entity) error {
-	id := t.GetNextId()
-	for _, entity := range entities {
-		if entity.GetByName("created_at") == nil {
-			entity.SetByName("created_at", time.Now())
-		}
-		if entity.GetByName("updated_at") == nil {
-			entity.SetByName("updated_at", time.Now())
+	if len(entities) == 0 {
+		return nil
+	}
+
+	// Para una sola entidad, proceso inmediato
+	if len(entities) == 1 {
+		return t.insertSingle(entities[0])
+	}
+
+	// Para múltiples entidades, procesamiento por lotes
+	return t.insertBatch(entities)
+}
+
+func (t *Table) insertBatch(entities []*entity.Entity) error {
+	t.insertMutex.Lock()
+	defer t.insertMutex.Unlock()
+
+	// Procesar en chunks para no sobrecargar la memoria
+	for start := 0; start < len(entities); start += maxBatchSize {
+		end := start + maxBatchSize
+		if end > len(entities) {
+			end = len(entities)
 		}
 
-		userfields := t.Fields.Len()
-		if entity.Len() != userfields {
-			return fmt.Errorf("expected %d values, got %d", userfields, entity.Values())
+		chunk := entities[start:end]
+		if err := t.processBatch(chunk); err != nil {
+			return fmt.Errorf("batch insert failed at chunk %d-%d: %w", start, end, err)
 		}
-		entity.SetByName("id", id)
-		if err := t.writeRowToFile(entity); err != nil {
-			return err
-		}
-
-		id++
 	}
 
 	return nil
 }
 
-func (t *Table) writeRowToFile(entity *entity.Entity) error {
-	buff, err := t.writeAllocator.Allocate()
-	if err != nil {
-		return fmt.Errorf("failed to allocate memory for row: %v", err)
-	}
-	defer t.writeAllocator.Release(buff)
+func (t *Table) GetBatch(ids []int64) ([]*entity.Entity, error) {
+	results := make([]*entity.Entity, len(ids))
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(ids))
 
-	buffer := buff.([]byte)
+	for i, id := range ids {
+		wg.Add(1)
+		go func(i int, id int64) {
+			defer wg.Done()
+			entity, err := entity.NewEntity(t.Fields)
+			if err != nil {
+				errCh <- err
+				return
+			}
 
-	err = entity.Write(buffer)
-	if err != nil {
-		return fmt.Errorf("failed to write row to buffer: %v", err)
-	}
-
-	for i := len(buffer); i < t.reservedSize; i++ {
-		buffer[i] = 0
-	}
-
-	offset := (t.length) * int64(t.reservedSize)
-	if _, err := t.File.WriteAt(buffer, offset); err != nil {
-		return fmt.Errorf("failed to write row to file: %v", err)
-	}
-
-	if err := t.File.Sync(); err != nil {
-		return fmt.Errorf("failed to sync file: %v", err)
+			err = t.Get(id, entity)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			results[i] = entity
+		}(i, id)
 	}
 
-	t.length++
+	wg.Wait()
+	close(errCh)
 
-	return nil
+	for err := range errCh {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (t *Table) Close() {
-	t.File.Close()
-}
+	close(t.stopWorkers)
+	t.workerWg.Wait()
 
-func (t *Table) readRowFromFile(id int64, row *entity.Entity) error {
-	offset := (id - 1) * int64(t.reservedSize)
-
-	buff, err := t.readAllocator.Allocate()
-	if err != nil {
-		return fmt.Errorf("failed to allocate memory for row %d: %v", id, err)
-	}
-	defer t.readAllocator.Release(buff)
-	buffer := buff.([]byte)
-
-	if _, err := t.File.ReadAt(buffer, offset); err != nil {
-		return fmt.Errorf("failed to read row %d: %v", id, err)
+	if err := t.writer.Flush(); err != nil {
+		fmt.Printf("failed to flush writer: %v\n", err)
 	}
 
-	err = row.Read(buffer)
-	if err != nil {
-		return fmt.Errorf("failed to parse row %d: %v", id, err)
+	if err := t.file.Sync(); err != nil {
+		fmt.Printf("failed to sync file: %v\n", err)
 	}
 
-	return nil
-}
-
-func (t *Table) Get(id int64, row *entity.Entity) error {
-	if id < 0 {
-		return fmt.Errorf("invalid row index %d", id)
+	if err := t.file.Close(); err != nil {
+		fmt.Printf("failed to close file: %v\n", err)
 	}
-
-	err := t.readRowFromFile(id, row)
-	if err != nil {
-		return fmt.Errorf("failed to read row %d: %v", id, err)
-	}
-
-	return nil
 }
 
 func (t *Table) Length() int64 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	return t.length
 }
 
 func (t *Table) EffectiveSize() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	return t.effectiveSize
-}
-
-func (t *Table) ReservedSize() int {
-	return t.reservedSize
-}
-
-func (t *Table) Print() {
-	fmt.Println("Table Name:", t.Name)
-	fmt.Println("Table fields:")
-	format := " - %s (%s)\n"
-	fields := *t.Fields
-
-	if fields.Len() < 4 {
-		fmt.Printf(format, fields[0].Name, fields[0].Type.String())
-
-		for i := 4; i < t.Fields.Len(); i++ {
-			fmt.Printf(format, fields[i].Name, fields[i].Type.String())
-		}
-		fmt.Printf(format, fields[1].Name, fields[1].Type.String())
-		fmt.Printf(format, fields[2].Name, fields[2].Type.String())
-		fmt.Printf(format, fields[3].Name, fields[3].Type.String())
-	} else {
-		for i := 0; i < fields.Len(); i++ {
-			fmt.Printf(format, fields[i].Name, fields[i].Type.String())
-		}
-	}
-
-	fmt.Println("Table Length:", t.length)
-	fmt.Println("Table Reserved Size:", t.reservedSize)
-	fmt.Println("Table Effective Size:", t.effectiveSize)
-	fmt.Println("Table Path:", t.Path)
-	fmt.Println("Table File:", t.File.Name())
 }

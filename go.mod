@@ -12,6 +12,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
