@@ -15,3 +15,7 @@ func (v StringLengthValidator) Validate(value interface{}, colName string) error
 	}
 	return nil
 }
+
+func (v StringLengthValidator) String() string {
+	return fmt.Sprintf("stringLength(%v, %v)", v.Min, v.Max)
+}

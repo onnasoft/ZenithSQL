@@ -1,17 +1,29 @@
 package validate
 
 import (
-	"fmt"
+	"strings"
 )
 
 type Validator interface {
 	Validate(value interface{}, colName string) error
+	String() string
 }
-type NotNull struct{}
 
-func (v NotNull) Validate(value interface{}, colName string) error {
-	if value == nil {
-		return fmt.Errorf("column '%s' cannot be null", colName)
+type Validators []Validator
+
+func (v Validators) String() string {
+	var sb strings.Builder
+
+	for i := 0; i < len(v); i++ {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(v[i].String())
 	}
-	return nil
+
+	return sb.String()
+}
+
+func (v Validators) Len() int {
+	return len(v)
 }

@@ -35,3 +35,7 @@ func (v IsEmail) Validate(value interface{}, colName string) error {
 
 	return nil
 }
+
+func (v IsEmail) String() string {
+	return "isEmail"
+}

@@ -24,6 +24,16 @@ func main() {
 	}
 	insertRecords(table, users)
 	retrieveAndLogRecords(table)
+
+	schema, err := db.GetSchema("public")
+	if err != nil {
+		log.Fatal("Error getting schema: ", err)
+	}
+
+	table, err = schema.LoadTable("users")
+	if err != nil {
+		log.Fatal("Error loading table: ", err)
+	}
 }
 
 func setupDatabaseAndTable() (*engine.Database, *engine.Table) {

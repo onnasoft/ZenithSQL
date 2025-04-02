@@ -48,3 +48,15 @@ func (s *Schema) CreateTable(name string, fields []*entity.Field) (*Table, error
 	s.Tables[name] = t
 	return t, nil
 }
+
+func (s *Schema) LoadTable(name string) (*Table, error) {
+	t, err := LoadTable(&TableConfig{
+		Name: name,
+		Path: filepath.Join(s.Path, "tables"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create table: %v", err)
+	}
+	s.Tables[name] = t
+	return t, nil
+}

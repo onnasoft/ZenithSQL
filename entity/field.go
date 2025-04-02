@@ -8,13 +8,13 @@ import (
 )
 
 type Field struct {
-	Name            string               `json:"name"`
-	Type            DataType             `json:"type"`
-	Length          int                  `json:"length"`
-	Validators      []validate.Validator `json:"validators"`
-	IsSettedFlagPos int                  `json:"is_setted_flag_pos"`
-	StartPosition   int                  `json:"start_position"`
-	EndPosition     int                  `json:"end_position"`
+	Name            string              `json:"name"`
+	Type            DataType            `json:"type"`
+	Length          int                 `json:"length"`
+	Validators      validate.Validators `json:"validators"`
+	IsSettedFlagPos int                 `json:"is_setted_flag_pos"`
+	StartPosition   int                 `json:"start_position"`
+	EndPosition     int                 `json:"end_position"`
 }
 
 func (e *Field) IsNumeric() bool {
@@ -45,6 +45,14 @@ func (f *Field) Prepare(offset int) {
 	}
 
 	f.IsSettedFlagPos = offset
-	f.StartPosition = offset + 1 // El byte después del flag
+	f.StartPosition = offset + 1
 	f.EndPosition = f.StartPosition + f.Length
+}
+
+func (f *Field) String() string {
+	if f.Validators.Len() == 0 {
+		return fmt.Sprintf("%v %v(%v)", f.Name, f.Type, f.Length)
+	}
+
+	return fmt.Sprintf("%v %v(%v) valid[%v]", f.Name, f.Type, f.Length, f.Validators)
 }

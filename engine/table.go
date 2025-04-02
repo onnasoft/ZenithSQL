@@ -3,8 +3,10 @@ package engine
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -31,7 +33,7 @@ type Table struct {
 	Path          string
 	Fields        *entity.Fields
 	length        int64
-	effectiveSize int // Tamaño efectivo de los datos (calculado)
+	effectiveSize int
 	file          *os.File
 	writer        *bufio.Writer
 	reader        *bufio.Reader
@@ -45,7 +47,7 @@ type Table struct {
 	batchBuffer   []byte
 	fieldOffsets  []int
 	fieldIndex    map[string]int
-	paddingSize   int // Tamaño de padding adicional si es necesario
+	paddingSize   int
 }
 
 type TableConfig struct {
@@ -62,9 +64,8 @@ func NewTable(config *TableConfig) (*Table, error) {
 
 	filePath := filepath.Join(fullPath, "data.bin")
 
-	info, err := os.Stat(filePath)
+	_, err := os.Stat(filePath)
 	if err == nil {
-		log.Println(info)
 		return nil, fmt.Errorf("file %v already exists", filePath)
 	}
 
@@ -78,15 +79,71 @@ func NewTable(config *TableConfig) (*Table, error) {
 		return nil, err
 	}
 
-	enc := json.NewEncoder(os.Stdout)
+	err = t.saveSchema()
+	if err != nil {
+		return nil, err
+	}
+
+	return t, nil
+}
+
+func LoadTable(config *TableConfig) (*Table, error) {
+	fullPath := filepath.Join(config.Path, config.Name)
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create table directory: %w", err)
+	}
+
+	filePath := filepath.Join(fullPath, "data.bin")
+	_, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("file %v not exists", filePath)
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open data file: %w", err)
+	}
+
+	t, err := openTable(fullPath, config.Name, file, config.Fields)
+	if err != nil {
+		return nil, err
+	}
+
+	err = t.loadSchema()
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, errors.New("no implemented")
+}
+
+func (t *Table) loadSchema() error {
+	return errors.New("no implemented")
+}
+
+func (t *Table) saveSchema() error {
+	filePath := path.Join(t.Path, "schema.json")
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+
+	enc := json.NewEncoder(file)
 	enc.SetIndent("", "  ")
+	fields := make([]string, t.Fields.Len())
+
+	for i := 0; i < t.Fields.Len(); i++ {
+		field, _ := t.Fields.Get(i)
+		fields[i] = field.String()
+	}
+
 	enc.Encode(map[string]interface{}{
 		"name":   t.Name,
 		"path":   t.Path,
-		"fields": t.Fields.Iter(),
+		"fields": fields,
 	})
 
-	return t, nil
+	return nil
 }
 
 func openTable(path, name string, file *os.File, fields []*entity.Field) (*Table, error) {
