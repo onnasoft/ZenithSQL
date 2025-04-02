@@ -40,7 +40,7 @@ func main() {
 			log.Fatal(err)
 		}*/
 
-	err = table.Get(1, record)
+	record, err = table.Get(1)
 	if err != nil {
 		log.Fatal(err)
 	}

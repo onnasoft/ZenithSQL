@@ -20,7 +20,7 @@ func (v IsEmail) Validate(value interface{}, colName string) error {
 		return fmt.Errorf(msg, colName, errNotString)
 	}
 
-	if len(str) > 254 || len(str) < 3 { // min: a@b
+	if len(str) > 254 || len(str) < 3 {
 		return fmt.Errorf(msg, colName, errInvalidEmail)
 	}
 
@@ -36,6 +36,16 @@ func (v IsEmail) Validate(value interface{}, colName string) error {
 	return nil
 }
 
-func (v IsEmail) String() string {
+func (v IsEmail) Type() string {
 	return "isEmail"
+}
+
+func (v IsEmail) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "isEmail",
+	}
+}
+
+func (v *IsEmail) FromMap(value map[string]interface{}) {
+
 }

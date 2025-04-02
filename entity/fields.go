@@ -78,7 +78,7 @@ func (f *Fields) GetByName(name string) (*Field, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	if index, ok := f.nameIndex[name]; ok {
+	if index, ok := f.IndexOf(name); ok {
 		return f.fields[index], nil
 	}
 	return nil, fmt.Errorf("field %s not found", name)

@@ -49,10 +49,70 @@ func (f *Field) Prepare(offset int) {
 	f.EndPosition = f.StartPosition + f.Length
 }
 
-func (f *Field) String() string {
-	if f.Validators.Len() == 0 {
-		return fmt.Sprintf("%v %v(%v)", f.Name, f.Type, f.Length)
+func (f *Field) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"name":               f.Name,
+		"type":               f.Type.String(),
+		"length":             f.Length,
+		"validators":         f.Validators.ToMap(),
+		"is_setted_flag_pos": f.IsSettedFlagPos,
+		"start_position":     f.StartPosition,
+		"end_position":       f.EndPosition,
+	}
+}
+
+func (f *Field) FromMap(v map[string]interface{}) error {
+	errMsg := "field %v is required"
+
+	name, ok := v["name"].(string)
+	if !ok {
+		return fmt.Errorf(errMsg, "name")
+	}
+	f.Name = name
+
+	fieldType, ok := v["type"].(string)
+	if !ok {
+		return fmt.Errorf(errMsg, "type")
+	}
+	f.Type = DataTypeFromString(fieldType)
+
+	length, ok := v["length"].(float64)
+	if !ok {
+		return fmt.Errorf(errMsg, "length")
+	}
+	f.Length = int(length)
+
+	isSettedFlagPos, ok := v["is_setted_flag_pos"].(float64)
+	if !ok {
+		return fmt.Errorf(errMsg, "is_setted_flag_pos")
+	}
+	f.IsSettedFlagPos = int(isSettedFlagPos)
+
+	startPosition, ok := v["start_position"].(float64)
+	if !ok {
+		return fmt.Errorf(errMsg, "start_position")
+	}
+	f.StartPosition = int(startPosition)
+
+	endPosition, ok := v["end_position"].(float64)
+	if !ok {
+		return fmt.Errorf(errMsg, "end_position")
+	}
+	f.EndPosition = int(endPosition)
+
+	validators, ok := v["validators"].([]interface{})
+	if !ok {
+		return fmt.Errorf(errMsg, "validators")
+	}
+	if len(validators) == 0 {
+		return nil
 	}
 
-	return fmt.Sprintf("%v %v(%v) valid[%v]", f.Name, f.Type, f.Length, f.Validators)
+	f.Validators = make(validate.Validators, len(validators))
+	for i := 0; i < len(validators); i++ {
+		validator := validators[i].(map[string]interface{})
+		f.Validators[i], _ = validate.FromMap(validator)
+	}
+
+	return nil
 }

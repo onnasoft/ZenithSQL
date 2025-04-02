@@ -3,7 +3,6 @@ package engine
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -15,6 +14,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/onnasoft/ZenithSQL/allocator"
 	"github.com/onnasoft/ZenithSQL/entity"
+	"github.com/onnasoft/ZenithSQL/utils"
 	"github.com/onnasoft/ZenithSQL/validate"
 )
 
@@ -39,7 +39,7 @@ type Table struct {
 	reader        *bufio.Reader
 	writePool     *allocator.BufferPool
 	readPool      *allocator.BufferPool
-	cache         *lru.Cache[int64, []byte]
+	cache         *lru.Cache[int64, *entity.Entity]
 	workerWg      sync.WaitGroup
 	stopWorkers   chan struct{}
 	schemaVersion int
@@ -74,10 +74,51 @@ func NewTable(config *TableConfig) (*Table, error) {
 		return nil, fmt.Errorf("failed to open data file: %w", err)
 	}
 
-	t, err := openTable(fullPath, config.Name, file, config.Fields)
+	t, err := openTable(fullPath, config.Name, file)
 	if err != nil {
 		return nil, err
 	}
+
+	fields := make([]*entity.Field, 1, len(config.Fields)+4)
+	fields[0] = &entity.Field{
+		Name:   "id",
+		Type:   entity.Int64Type,
+		Length: 8,
+	}
+	fields = append(fields, config.Fields...)
+	timeFields := []*entity.Field{
+		{
+			Name:   "created_at",
+			Type:   entity.TimestampType,
+			Length: 8,
+		}, {
+			Name:   "updated_at",
+			Type:   entity.TimestampType,
+			Length: 8,
+		}, {
+			Name:   "deleted_at",
+			Type:   entity.TimestampType,
+			Length: 8,
+		},
+	}
+	fields = append(fields, timeFields...)
+	t.effectiveSize = 0
+	defaultFields := entity.NewFields()
+	for i := 0; i < len(fields); i++ {
+		field := reflect.ValueOf(fields[i]).Elem().Interface().(entity.Field)
+		field.Prepare(t.effectiveSize)
+		t.effectiveSize += field.Length + 1 // +1 for null indicator
+
+		if field.Type == entity.StringType {
+			field.Validators = append(field.Validators, &validate.StringLength{Min: 0, Max: field.Length})
+		}
+
+		defaultFields.Add(&field)
+	}
+	t.Fields = defaultFields
+	t.effectiveSize = t.calculateEffectiveSize()
+	t.fieldOffsets = t.calculateFieldOffsets()
+	t.buildFieldIndex()
 
 	err = t.saveSchema()
 	if err != nil {
@@ -99,30 +140,76 @@ func LoadTable(config *TableConfig) (*Table, error) {
 		return nil, fmt.Errorf("file %v not exists", filePath)
 	}
 
-	file, err := os.Open(filePath)
+	fields, err := loadSchema(fullPath)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open data file: %w", err)
 	}
 
-	t, err := openTable(fullPath, config.Name, file, config.Fields)
+	t, err := openTable(fullPath, config.Name, file)
 	if err != nil {
 		return nil, err
 	}
 
-	err = t.loadSchema()
-	if err != nil {
-		return nil, err
+	defaultFields := entity.NewFields()
+	for i := 0; i < len(fields); i++ {
+		field := reflect.ValueOf(fields[i]).Elem().Interface().(entity.Field)
+		defaultFields.Add(&field)
 	}
+	t.Fields = defaultFields
 
-	return nil, errors.New("no implemented")
+	t.effectiveSize = t.calculateEffectiveSize()
+	t.fieldOffsets = t.calculateFieldOffsets()
+	t.buildFieldIndex()
+
+	stats, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stats in file: %w", err)
+	}
+	t.length = stats.Size() / int64(t.effectiveSize)
+
+	return t, nil
 }
 
-func (t *Table) loadSchema() error {
-	return errors.New("no implemented")
+func loadSchema(fullPath string) ([]*entity.Field, error) {
+	filePath := path.Join(fullPath, "schema.json")
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	data := map[string]interface{}{}
+	if err := json.NewDecoder(file).Decode(&data); err != nil {
+		return nil, err
+	}
+
+	length := len(data["fields"].([]interface{}))
+	fields := make([]*entity.Field, length)
+	dataFields := data["fields"].([]interface{})
+
+	for i := 0; i < length; i++ {
+		current := dataFields[i]
+		fields[i] = &entity.Field{}
+		err := fields[i].FromMap(current.(map[string]interface{}))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return fields, nil
 }
 
 func (t *Table) saveSchema() error {
 	filePath := path.Join(t.Path, "schema.json")
+
+	if _, err := os.Stat(filePath); err == nil {
+		os.Remove(filePath)
+	}
+
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
@@ -130,11 +217,11 @@ func (t *Table) saveSchema() error {
 
 	enc := json.NewEncoder(file)
 	enc.SetIndent("", "  ")
-	fields := make([]string, t.Fields.Len())
+	fields := make([]interface{}, t.Fields.Len())
 
 	for i := 0; i < t.Fields.Len(); i++ {
 		field, _ := t.Fields.Get(i)
-		fields[i] = field.String()
+		fields[i] = field.ToMap()
 	}
 
 	enc.Encode(map[string]interface{}{
@@ -146,7 +233,7 @@ func (t *Table) saveSchema() error {
 	return nil
 }
 
-func openTable(path, name string, file *os.File, fields []*entity.Field) (*Table, error) {
+func openTable(path, name string, file *os.File) (*Table, error) {
 	t := &Table{
 		Name:          name,
 		Path:          path,
@@ -159,11 +246,6 @@ func openTable(path, name string, file *os.File, fields []*entity.Field) (*Table
 		paddingSize:   0,
 	}
 
-	t.buildFields(fields)
-	t.effectiveSize = t.calculateEffectiveSize()
-	t.fieldOffsets = t.calculateFieldOffsets()
-	t.buildFieldIndex()
-
 	rowSize := t.effectiveSize
 	if rowSize < minBufferSize {
 		t.paddingSize = minBufferSize - rowSize
@@ -172,53 +254,12 @@ func openTable(path, name string, file *os.File, fields []*entity.Field) (*Table
 
 	t.writePool = allocator.NewBufferPool(100, rowSize)
 	t.readPool = allocator.NewBufferPool(100, t.effectiveSize)
-	t.cache, _ = lru.New[int64, []byte](defaultCacheSize)
+	t.cache, _ = lru.New[int64, *entity.Entity](defaultCacheSize)
 
 	t.insertMutex = sync.Mutex{}
 	t.batchBuffer = make([]byte, maxBatchSize*rowSize)
 
 	return t, nil
-}
-
-func (t *Table) buildFields(fields []*entity.Field) {
-	allFields := make([]*entity.Field, 1, len(fields)+4)
-	allFields[0] = &entity.Field{
-		Name:   "id",
-		Type:   entity.Int64Type,
-		Length: 8,
-	}
-	allFields = append(allFields, fields...)
-	timeFields := []*entity.Field{
-		{
-			Name:   "created_at",
-			Type:   entity.TimestampType,
-			Length: 8,
-		}, {
-			Name:   "updated_at",
-			Type:   entity.TimestampType,
-			Length: 8,
-		}, {
-			Name:   "deleted_at",
-			Type:   entity.TimestampType,
-			Length: 8,
-		},
-	}
-	allFields = append(allFields, timeFields...)
-
-	defaultFields := entity.NewFields()
-	for i := 0; i < len(allFields); i++ {
-		field := reflect.ValueOf(allFields[i]).Elem().Interface().(entity.Field)
-		field.Prepare(t.effectiveSize)
-		t.effectiveSize += field.Length + 1 // +1 for null indicator
-
-		if field.Type == entity.StringType {
-			field.Validators = append(field.Validators, validate.StringLengthValidator{Min: 0, Max: field.Length})
-		}
-
-		defaultFields.Add(&field)
-	}
-
-	t.Fields = defaultFields
 }
 
 func (t *Table) calculateRowSize() int {
@@ -300,70 +341,40 @@ func (t *Table) buildFieldIndex() {
 	}
 }
 
-func (t *Table) Get(id int64, record *entity.Entity) error {
-	return t.fullRead(id, record)
+func (t *Table) Get(id int64) (*entity.Entity, error) {
+	return t.fullRead(id)
 }
 
-func (t *Table) fullRead(id int64, record *entity.Entity) error {
+func (t *Table) fullRead(id int64) (*entity.Entity, error) {
+	defer utils.RecoverFromPanic("fullRead", utils.Log)
+
 	if cached, ok := t.cache.Get(id); ok {
-		if err := record.Read(cached); err != nil {
-			return fmt.Errorf("failed to deserialize cached entity: %w", err)
-		}
-		return nil
+		return cached, nil
 	}
 
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	if id < 1 || id > t.length {
-		return fmt.Errorf("invalid id %d", id)
+		return nil, fmt.Errorf("invalid id %d", id)
 	}
 
 	buffer := make([]byte, t.effectiveSize)
 
 	offset := (id - 1) * int64(t.effectiveSize)
-	if _, err := t.file.ReadAt(buffer, offset); err != nil {
-		return fmt.Errorf("failed to read row %d: %w", id, err)
+	_, err := t.file.ReadAt(buffer, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read row %d: %w", id, err)
 	}
 
+	record, _ := entity.NewEntity(t.Fields)
 	if err := record.Read(buffer); err != nil {
-		return fmt.Errorf("failed to parse row %d: %w", id, err)
+		return nil, fmt.Errorf("failed to parse row %d: %w", id, err)
 	}
 
-	t.cache.Add(id, buffer)
+	t.cache.Add(id, record)
 
-	return nil
-}
-
-func (t *Table) AddColumn(name string, typ entity.DataType, length int, validators ...validate.Validator) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if length <= 0 {
-		return fmt.Errorf("invalid length for type %s", typ.String())
-	}
-
-	col := &entity.Field{
-		Name:       name,
-		Type:       typ,
-		Length:     length,
-		Validators: validators,
-	}
-	if typ == entity.StringType && length > 0 {
-		col.Validators = append(col.Validators, validate.StringLengthValidator{Min: 0, Max: length})
-	}
-	col.Prepare(t.effectiveSize)
-	t.Fields.Add(col)
-	t.schemaVersion++
-	t.effectiveSize = t.calculateEffectiveSize()
-	t.fieldOffsets = t.calculateFieldOffsets()
-	t.buildFieldIndex() // Reconstruir el índice
-	t.cache.Purge()     // Clear cache on schema change
-
-	t.readPool = allocator.NewBufferPool(100, t.effectiveSize)
-	t.writePool = allocator.NewBufferPool(100, t.effectiveSize)
-
-	return nil
+	return record, nil
 }
 
 func (t *Table) BulkSum(fieldName string) (float64, error) {
@@ -416,17 +427,16 @@ func (t *Table) BulkCount(condition func(*entity.Entity) bool) (int64, error) {
 	defer t.mu.RUnlock()
 
 	var count int64
-	tempEntity := &entity.Entity{}
 
 	for id := int64(1); id <= t.length; id++ {
-		if err := t.fullRead(id, tempEntity); err != nil {
+		record, err := t.fullRead(id)
+		if err != nil {
 			return 0, fmt.Errorf("failed to read row %d: %w", id, err)
 		}
 
-		if condition(tempEntity) {
+		if condition(record) {
 			count++
 		}
-		tempEntity.Reset()
 	}
 
 	return count, nil
@@ -490,13 +500,7 @@ func (t *Table) GetBatch(ids []int64) ([]*entity.Entity, error) {
 		wg.Add(1)
 		go func(i int, id int64) {
 			defer wg.Done()
-			entity, err := entity.NewEntity(t.Fields)
-			if err != nil {
-				errCh <- err
-				return
-			}
-
-			err = t.Get(id, entity)
+			entity, err := t.Get(id)
 			if err != nil {
 				errCh <- err
 				return

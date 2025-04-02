@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/engine"
@@ -34,6 +35,13 @@ func main() {
 	if err != nil {
 		log.Fatal("Error loading table: ", err)
 	}
+
+	record, err := table.Get(1)
+	if err != nil {
+		log.Fatal("Error getting record: ", err)
+	}
+
+	fmt.Println(record)
 }
 
 func setupDatabaseAndTable() (*engine.Database, *engine.Table) {
@@ -57,7 +65,7 @@ func setupDatabaseAndTable() (*engine.Database, *engine.Table) {
 			Type:   entity.StringType,
 			Length: 100,
 			Validators: []validate.Validator{
-				validate.IsEmail{},
+				&validate.IsEmail{},
 			},
 		},
 	}
@@ -99,13 +107,9 @@ func insertRecords(table *engine.Table, users []map[string]interface{}) {
 }
 
 func retrieveAndLogRecords(table *engine.Table) {
-	fields := table.Fields
 	for i := int64(1); i <= table.Length(); i++ {
-		record, err := entity.NewEntity(fields)
+		record, err := table.Get(i)
 		if err != nil {
-			log.Fatal("Error creating row: ", err)
-		}
-		if err := table.Get(i, record); err != nil {
 			log.Fatal("Error getting row: ", err)
 		}
 		log.Info(record)

@@ -19,7 +19,42 @@ const (
 	StringType
 	BoolType
 	TimestampType
+
+	Unknown = 100
 )
+
+func DataTypeFromString(value string) DataType {
+	switch value {
+	case "int8":
+		return Int8Type
+	case "int16":
+		return Int16Type
+	case "int32":
+		return Int32Type
+	case "int64":
+		return Int64Type
+	case "uint8":
+		return Uint8Type
+	case "uint16":
+		return Uint16Type
+	case "uint32":
+		return Uint32Type
+	case "uint64":
+		return Uint64Type
+	case "float32":
+		return Float32Type
+	case "float64":
+		return Float64Type
+	case "string":
+		return StringType
+	case "bool":
+		return BoolType
+	case "timestamp":
+		return TimestampType
+	}
+
+	return Unknown
+}
 
 func (dt DataType) String() string {
 	switch dt {

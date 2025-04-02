@@ -9,7 +9,7 @@ import (
 type Entity struct {
 	mu            sync.RWMutex
 	checkValues   bool
-	fields        *Fields
+	Fields        *Fields
 	values        []interface{}
 	selectiveMode bool
 	selected      map[string]struct{}
@@ -22,7 +22,7 @@ func NewEntity(fields *Fields) (*Entity, error) {
 
 	return &Entity{
 		checkValues: true,
-		fields:      fields,
+		Fields:      fields,
 		values:      make([]interface{}, fields.Len()),
 		selected:    make(map[string]struct{}),
 	}, nil
@@ -64,7 +64,7 @@ func (e *Entity) SetFieldDirect(name string, data []byte) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	field, err := e.fields.GetByName(name)
+	field, err := e.Fields.GetByName(name)
 	if err != nil {
 		return err
 	}
@@ -74,38 +74,18 @@ func (e *Entity) SetFieldDirect(name string, data []byte) error {
 		return err
 	}
 
-	index, _ := e.fields.IndexOf(name)
+	index, _ := e.Fields.IndexOf(name)
 	e.values[index] = value
 	return nil
 }
 
-// Read lee datos desde un buffer
 func (e *Entity) Read(buffer []byte) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if e.selectiveMode {
-		return e.readSelective(buffer)
-	}
 	return e.readFull(buffer)
 }
 
 func (e *Entity) readFull(buffer []byte) error {
-	for i := 0; i < e.fields.Len(); i++ {
-		field, _ := e.fields.Get(i)
-		if err := e.readField(field, buffer); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (e *Entity) readSelective(buffer []byte) error {
-	for name := range e.selected {
-		field, err := e.fields.GetByName(name)
-		if err != nil {
-			continue // Saltar campos no encontrados
-		}
+	for i := 0; i < e.Fields.Len(); i++ {
+		field, _ := e.Fields.Get(i)
 		if err := e.readField(field, buffer); err != nil {
 			return err
 		}
@@ -119,7 +99,7 @@ func (e *Entity) readField(field *Field, buffer []byte) error {
 	}
 
 	if buffer[field.IsSettedFlagPos] == 0 {
-		index, _ := e.fields.IndexOf(field.Name)
+		index, _ := e.Fields.IndexOf(field.Name)
 		e.values[index] = nil
 		return nil
 	}
@@ -133,14 +113,14 @@ func (e *Entity) readField(field *Field, buffer []byte) error {
 		return err
 	}
 
-	index, _ := e.fields.IndexOf(field.Name)
+	index, _ := e.Fields.IndexOf(field.Name)
 	e.values[index] = value
 	return nil
 }
 
 func (e *Entity) writeFull(buffer []byte) error {
-	for i := 0; i < e.fields.Len(); i++ {
-		field, _ := e.fields.Get(i)
+	for i := 0; i < e.Fields.Len(); i++ {
+		field, _ := e.Fields.Get(i)
 		if err := e.writeField(field, buffer); err != nil {
 			return err
 		}
@@ -150,7 +130,7 @@ func (e *Entity) writeFull(buffer []byte) error {
 
 func (e *Entity) writeSelective(buffer []byte) error {
 	for name := range e.selected {
-		field, err := e.fields.GetByName(name)
+		field, err := e.Fields.GetByName(name)
 		if err != nil {
 			continue // Saltar campos no encontrados
 		}
@@ -166,7 +146,7 @@ func (e *Entity) Write(buffer []byte) error {
 	defer e.mu.RUnlock()
 
 	// Verificar tamaño mínimo del buffer
-	minSize := e.fields.CalculateSize()
+	minSize := e.Fields.CalculateSize()
 	if len(buffer) < minSize {
 		return fmt.Errorf("buffer too small for entity (required: %d, got: %d)", minSize, len(buffer))
 	}
@@ -184,7 +164,7 @@ func (e *Entity) writeField(field *Field, buffer []byte) error {
 			field.Name, field.EndPosition, len(buffer))
 	}
 
-	index, _ := e.fields.IndexOf(field.Name)
+	index, _ := e.Fields.IndexOf(field.Name)
 	value := e.values[index]
 
 	// Escribir flag de valor establecido
@@ -279,7 +259,7 @@ func (e *Entity) GetByName(name string) interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	index, ok := e.fields.IndexOf(name)
+	index, ok := e.Fields.IndexOf(name)
 	if !ok {
 		return nil
 	}
@@ -305,7 +285,7 @@ func (e *Entity) SetByIndex(index int, value interface{}) error {
 		return fmt.Errorf("index out of range: %d", index)
 	}
 
-	field, err := e.fields.Get(index)
+	field, err := e.Fields.Get(index)
 	if err != nil {
 		return err
 	}
@@ -329,12 +309,12 @@ func (e *Entity) SetByName(name string, value interface{}) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	index, ok := e.fields.IndexOf(name)
+	index, ok := e.Fields.IndexOf(name)
 	if !ok {
 		return fmt.Errorf("field not found: %s", name)
 	}
 
-	field, err := e.fields.Get(index)
+	field, err := e.Fields.Get(index)
 	if err != nil {
 		return err
 	}
@@ -360,11 +340,11 @@ func (e *Entity) String() string {
 
 	var sb strings.Builder
 	sb.WriteString("{")
-	for i := 0; i < e.fields.Len(); i++ {
+	for i := 0; i < e.Fields.Len(); i++ {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		field, _ := e.fields.Get(i)
+		field, _ := e.Fields.Get(i)
 		sb.WriteString(fmt.Sprintf("%s: %v", field.Name, e.values[i]))
 	}
 	sb.WriteString("}")
