@@ -17,16 +17,6 @@ func (dt DataType) IsNumeric() bool {
 	return dt == Int64Type || dt == Float64Type
 }
 
-type Field struct {
-	Name            string
-	Type            DataType
-	Length          int
-	Validators      []validate.Validator
-	StartPosition   int
-	EndPosition     int
-	IsSettedFlagPos int
-}
-
 type Fields struct {
 	fields    []*Field
 	nameIndex map[string]int
@@ -39,27 +29,6 @@ func NewFields() *Fields {
 		nameIndex: make(map[string]int),
 	}
 }
-func (e *Field) IsNumeric() bool {
-	return e.Type == Int64Type || e.Type == Float64Type
-}
-
-func (e *Field) IsString() bool {
-	return e.Type == StringType
-}
-func (e *Field) IsBool() bool {
-	return e.Type == BoolType
-}
-
-func (e *Field) IsDate() bool {
-	return e.Type == TimestampType
-}
-
-func (e *Field) DecodeNumeric(buffer []byte) (interface{}, error) {
-	if parseFunc, ok := parseTypes[e.Type]; ok {
-		return parseFunc(buffer), nil
-	}
-	return nil, fmt.Errorf("unsupported type %s", e.Type)
-}
 
 func (f *Fields) Iter() []*Field {
 	f.mu.RLock()
@@ -71,16 +40,6 @@ func (f *Fields) Len() int {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return len(f.fields)
-}
-
-func (f *Field) Prepare(offset int) {
-	if f.Length <= 0 {
-		log.Fatalf("invalid length %d for field %s", f.Length, f.Name)
-	}
-
-	f.IsSettedFlagPos = offset
-	f.StartPosition = offset + 1 // El byte después del flag
-	f.EndPosition = f.StartPosition + f.Length
 }
 
 func (f *Fields) Get(index int) (*Field, error) {

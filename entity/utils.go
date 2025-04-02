@@ -9,59 +9,116 @@ import (
 )
 
 var writerTypes = map[DataType]func(buffer []byte, field *Field, val interface{}) error{
-	Int8Type: func(buffer []byte, field *Field, val interface{}) error {
-		buffer[field.StartPosition] = uint8(val.(int64))
-		return nil
-	},
-	Int16Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(val.(int64)))
-		return nil
-	},
-	Int32Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(val.(int64)))
-		return nil
-	},
-	Int64Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(int64)))
-		return nil
-	},
-	Uint8Type: func(buffer []byte, field *Field, val interface{}) error {
-		buffer[field.StartPosition] = uint8(val.(int64))
-		return nil
-	},
-	Uint16Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(val.(int64)))
-		return nil
-	},
-	Uint32Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(val.(int64)))
-		return nil
-	},
-	Uint64Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(int64)))
-		return nil
-	},
-	Float32Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], math.Float32bits(val.(float32)))
-		return nil
-	},
-	Float64Type: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], math.Float64bits(val.(float64)))
-		return nil
-	},
-	StringType: func(buffer []byte, field *Field, val interface{}) error {
-		str := val.(string)
-		if len(str) > field.Length {
-			return fmt.Errorf("string length exceeds maximum length of %d", field.Length)
+	Int8Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(int8)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Int8 field %s", field.Name)
 		}
-		copy(buffer[field.StartPosition:], str)
-		for j := len(str); j < field.Length; j++ {
-			buffer[field.StartPosition+j] = 0
+		buffer[field.StartPosition] = uint8(v)
+		return nil
+	},
+	Int16Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(int16)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Int16 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(v))
+		return nil
+	},
+	Int32Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(int32)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Int32 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(v))
+		return nil
+	},
+	Int64Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(int64)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Int64 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint64(buffer, uint64(v))
+		return nil
+	},
+	Uint8Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(uint8)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Uint8 field %s", field.Name)
+		}
+		buffer[field.StartPosition] = v
+		return nil
+	},
+	Uint16Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(uint16)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Uint16 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], v)
+		return nil
+	},
+	Uint32Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(uint32)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Uint32 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], v)
+		return nil
+	},
+	Uint64Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(uint64)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Uint64 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], v)
+		return nil
+	},
+	Float32Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(float32)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Float32 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], math.Float32bits(v))
+		return nil
+	},
+	Float64Type: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(float64)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Float64 field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint64(buffer, math.Float64bits(v))
+		return nil
+	},
+	StringType: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(string)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for String field %s", field.Name)
+		}
+		copy(buffer, v)
+		// Rellenar con ceros si es necesario
+		if len(v) < field.Length {
+			clear(buffer[len(v):])
 		}
 		return nil
 	},
-	TimestampType: func(buffer []byte, field *Field, val interface{}) error {
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], uint64(val.(time.Time).UnixNano()))
+	TimestampType: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(time.Time)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Timestamp field %s", field.Name)
+		}
+		binary.LittleEndian.PutUint64(buffer, uint64(v.UnixNano()))
+		return nil
+	},
+	BoolType: func(buffer []byte, field *Field, value interface{}) error {
+		v, ok := value.(bool)
+		if !ok && value != nil {
+			return fmt.Errorf("type assertion failed for Bool field %s", field.Name)
+		}
+		if v {
+			buffer[0] = 1
+		} else {
+			buffer[0] = 0
+		}
 		return nil
 	},
 }

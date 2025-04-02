@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/dataframe"
+	"github.com/onnasoft/ZenithSQL/engine"
 	"github.com/onnasoft/ZenithSQL/entity"
 	"golang.org/x/sys/unix"
 )
@@ -59,8 +59,8 @@ func main() {
 	showFinalStats(stats)
 }
 
-func initializeDatabase() (*dataframe.Database, *dataframe.Table, error) {
-	db, err := dataframe.NewDatabase("testdb", "./data")
+func initializeDatabase() (*engine.Database, *engine.Table, error) {
+	db, err := engine.NewDatabase("testdb", "./data")
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating database: %w", err)
 	}
@@ -70,25 +70,32 @@ func initializeDatabase() (*dataframe.Database, *dataframe.Table, error) {
 		return nil, nil, fmt.Errorf("creating schema: %w", err)
 	}
 
-	table, err := schema.CreateTable("temperatures")
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating table: %w", err)
+	fields := []*entity.Field{
+		{
+			Name:   "city",
+			Type:   entity.StringType,
+			Length: 100,
+		},
+		{
+			Name:   "temperature",
+			Type:   entity.Float64Type,
+			Length: 8,
+		},
+		{
+			Name: "record_time",
+			Type: entity.TimestampType,
+		},
 	}
 
-	if err := table.AddColumn("city", entity.StringType, 100); err != nil {
-		return nil, nil, fmt.Errorf("adding city column: %w", err)
-	}
-	if err := table.AddColumn("temperature", entity.Float64Type, 8); err != nil {
-		return nil, nil, fmt.Errorf("adding temperature column: %w", err)
-	}
-	if err := table.AddColumn("record_time", entity.TimestampType, 8); err != nil {
-		return nil, nil, fmt.Errorf("adding timestamp column: %w", err)
+	table, err := schema.CreateTable("temperatures", fields)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating table: %w", err)
 	}
 
 	return db, table, nil
 }
 
-func importFileConcurrent(filePath string, table *dataframe.Table, stats *ImportStats) error {
+func importFileConcurrent(filePath string, table *engine.Table, stats *ImportStats) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
@@ -197,7 +204,7 @@ func importFileConcurrent(filePath string, table *dataframe.Table, stats *Import
 	return nil
 }
 
-func batchInsertWorker(table *dataframe.Table, records <-chan *entity.Entity) error {
+func batchInsertWorker(table *engine.Table, records <-chan *entity.Entity) error {
 	batch := make([]*entity.Entity, 0, batchSize)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -231,7 +238,7 @@ func batchInsertWorker(table *dataframe.Table, records <-chan *entity.Entity) er
 	}
 }
 
-func parseLine(table *dataframe.Table, line []byte) (*entity.Entity, error) {
+func parseLine(table *engine.Table, line []byte) (*entity.Entity, error) {
 	parts := bytes.Split(line, []byte{separator})
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid format, expected 2 parts got %d", len(parts))

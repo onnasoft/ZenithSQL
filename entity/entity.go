@@ -1,23 +1,18 @@
 package entity
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
-	"time"
 )
 
 type Entity struct {
-	mu             sync.RWMutex
-	checkValues    bool
-	fields         *Fields
-	values         []interface{}
-	selectiveMode  bool
-	selected       map[string]struct{}
-	SelectiveRead  bool
-	SelectedFields []string
+	mu            sync.RWMutex
+	checkValues   bool
+	fields        *Fields
+	values        []interface{}
+	selectiveMode bool
+	selected      map[string]struct{}
 }
 
 func NewEntity(fields *Fields) (*Entity, error) {
@@ -205,12 +200,11 @@ func (e *Entity) writeField(field *Field, buffer []byte) error {
 			value, field.Name, field.Type)
 	}
 
-	// Escribir valor
-	dataSegment := buffer[field.StartPosition:field.EndPosition:field.EndPosition] // slice con límite de capacidad
-	return safeEncodeField(field, value, dataSegment)
+	dataSegment := buffer[field.StartPosition:field.EndPosition:field.EndPosition]
+	return encodeField(field, value, dataSegment)
 }
 
-func safeEncodeField(field *Field, value interface{}, buffer []byte) error {
+func encodeField(field *Field, value interface{}, buffer []byte) error {
 	if field.Length <= 0 {
 		return fmt.Errorf("invalid field length %d for %s", field.Length, field.Name)
 	}
@@ -222,49 +216,10 @@ func safeEncodeField(field *Field, value interface{}, buffer []byte) error {
 		return nil
 	}
 
-	switch field.Type {
-	case Int64Type:
-		v, ok := value.(int64)
-		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Int64 field %s", field.Name)
-		}
-		binary.LittleEndian.PutUint64(buffer, uint64(v))
-	case Float64Type:
-		v, ok := value.(float64)
-		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Float64 field %s", field.Name)
-		}
-		binary.LittleEndian.PutUint64(buffer, math.Float64bits(v))
-	case StringType:
-		v, ok := value.(string)
-		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for String field %s", field.Name)
-		}
-		copy(buffer, v)
-		// Rellenar con ceros si es necesario
-		if len(v) < field.Length {
-			clear(buffer[len(v):])
-		}
-	case TimestampType:
-		v, ok := value.(time.Time)
-		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Timestamp field %s", field.Name)
-		}
-		binary.LittleEndian.PutUint64(buffer, uint64(v.UnixNano()))
-	case BoolType:
-		v, ok := value.(bool)
-		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Bool field %s", field.Name)
-		}
-		if v {
-			buffer[0] = 1
-		} else {
-			buffer[0] = 0
-		}
-	default:
-		return fmt.Errorf("unsupported field type: %s", field.Type)
+	if writer, ok := writerTypes[field.Type]; ok {
+		return writer(buffer, field, value)
 	}
-	return nil
+	return fmt.Errorf("unsupported field type: %s", field.Type)
 }
 
 // clear llena un slice con ceros
@@ -421,11 +376,4 @@ func decodeField(field *Field, data []byte) (interface{}, error) {
 		return parser(data), nil
 	}
 	return nil, fmt.Errorf("unsupported field type: %s", field.Type)
-}
-
-func encodeField(field *Field, value interface{}, buffer []byte) error {
-	if writer, ok := writerTypes[field.Type]; ok {
-		return writer(buffer, field, value)
-	}
-	return fmt.Errorf("unsupported field type: %s", field.Type)
 }

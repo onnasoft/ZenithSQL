@@ -3,8 +3,9 @@ package main
 import (
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/dataframe"
+	"github.com/onnasoft/ZenithSQL/engine"
 	"github.com/onnasoft/ZenithSQL/entity"
+	"github.com/onnasoft/ZenithSQL/utils"
 	"github.com/onnasoft/ZenithSQL/validate"
 	"github.com/sirupsen/logrus"
 )
@@ -12,7 +13,11 @@ import (
 var log = logrus.New()
 
 func main() {
-	_, table := setupDatabaseAndTable()
+	utils.Clone(entity.Field{})
+	utils.Clone(&entity.Field{})
+
+	db, table := setupDatabaseAndTable()
+	defer db.Close()
 	users := []map[string]interface{}{
 		{"name": "Javier Xar", "email": "xarjavier@gmail.com"},
 		{"name": "Jhon Doe", "email": "jhondoe@gmail.com"},
@@ -21,8 +26,8 @@ func main() {
 	retrieveAndLogRecords(table)
 }
 
-func setupDatabaseAndTable() (*dataframe.Database, *dataframe.Table) {
-	db, err := dataframe.NewDatabase("testdb", "./data")
+func setupDatabaseAndTable() (*engine.Database, *engine.Table) {
+	db, err := engine.NewDatabase("testdb", "./data")
 	if err != nil {
 		log.Fatal("Error creating database: ", err)
 	}
@@ -31,17 +36,24 @@ func setupDatabaseAndTable() (*dataframe.Database, *dataframe.Table) {
 	if err != nil {
 		log.Fatal("Error creating schema: ", err)
 	}
-
-	table, err := schema.CreateTable("users")
+	fields := []*entity.Field{
+		{
+			Name:   "name",
+			Type:   entity.StringType,
+			Length: 100,
+		},
+		{
+			Name:   "email",
+			Type:   entity.StringType,
+			Length: 100,
+			Validators: []validate.Validator{
+				validate.IsEmail{},
+			},
+		},
+	}
+	table, err := schema.CreateTable("users", fields)
 	if err != nil {
 		log.Fatal("Error creating table: ", err)
-	}
-
-	if err := table.AddColumn("name", entity.StringType, 10); err != nil {
-		log.Fatal("Error adding column: ", err)
-	}
-	if err := table.AddColumn("email", entity.StringType, 20, validate.IsEmail{}); err != nil {
-		log.Fatal("Error adding column: ", err)
 	}
 
 	log.Info("Table created successfully")
@@ -50,7 +62,7 @@ func setupDatabaseAndTable() (*dataframe.Database, *dataframe.Table) {
 	return db, table
 }
 
-func insertRecords(table *dataframe.Table, users []map[string]interface{}) {
+func insertRecords(table *engine.Table, users []map[string]interface{}) {
 	records := make([]*entity.Entity, len(users))
 	for i, user := range users {
 		record, err := entity.NewEntity(table.Fields)
@@ -76,7 +88,7 @@ func insertRecords(table *dataframe.Table, users []map[string]interface{}) {
 	}
 }
 
-func retrieveAndLogRecords(table *dataframe.Table) {
+func retrieveAndLogRecords(table *engine.Table) {
 	fields := table.Fields
 	for i := int64(1); i <= table.Length(); i++ {
 		record, err := entity.NewEntity(fields)

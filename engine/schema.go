@@ -1,9 +1,11 @@
-package dataframe
+package engine
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/onnasoft/ZenithSQL/entity"
 )
 
 type Schema struct {
@@ -26,8 +28,20 @@ func NewSchema(name, path string) (*Schema, error) {
 	}, nil
 }
 
-func (s *Schema) CreateTable(name string) (*Table, error) {
-	t, err := NewTable(name, filepath.Join(s.Path, "tables"))
+func (s *Schema) GetTable(name string) (*Table, error) {
+	schema, exists := s.Tables[name]
+	if !exists {
+		return nil, fmt.Errorf("table %s not found", name)
+	}
+	return schema, nil
+}
+
+func (s *Schema) CreateTable(name string, fields []*entity.Field) (*Table, error) {
+	t, err := NewTable(&TableConfig{
+		Name:   name,
+		Path:   filepath.Join(s.Path, "tables"),
+		Fields: fields,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create table: %v", err)
 	}
