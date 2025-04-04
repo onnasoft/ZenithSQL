@@ -10,18 +10,18 @@ type Entity struct {
 	buff        []byte
 	mu          sync.RWMutex
 	checkValues bool
-	Fields      *Fields
+	Schema      *Schema
 	values      []interface{}
 }
 
-func NewEntity(fields *Fields) (*Entity, error) {
+func NewEntity(fields *Schema) (*Entity, error) {
 	if fields == nil {
 		return nil, fmt.Errorf("fields cannot be nil")
 	}
 
 	return &Entity{
 		checkValues: true,
-		Fields:      fields,
+		Schema:      fields,
 		values:      make([]interface{}, fields.Len()),
 	}, nil
 }
@@ -50,7 +50,7 @@ func (e *Entity) SetFieldDirect(name string, data []byte) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	field, err := e.Fields.GetByName(name)
+	field, err := e.Schema.GetByName(name)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (e *Entity) SetFieldDirect(name string, data []byte) error {
 		return err
 	}
 
-	index, _ := e.Fields.IndexOf(name)
+	index, _ := e.Schema.IndexOf(name)
 	e.values[index] = value
 	return nil
 }
@@ -71,7 +71,7 @@ func (e *Entity) Read(buffer []byte) error {
 }
 
 func (e *Entity) readField(field *Field) error {
-	index, _ := e.Fields.IndexOf(field.Name)
+	index, _ := e.Schema.IndexOf(field.Name)
 	if e.values[index] != nil {
 		return nil
 	}
@@ -99,8 +99,8 @@ func (e *Entity) readField(field *Field) error {
 }
 
 func (e *Entity) writeFull(buffer []byte) error {
-	for i := 0; i < e.Fields.Len(); i++ {
-		field, _ := e.Fields.Get(i)
+	for i := 0; i < e.Schema.Len(); i++ {
+		field, _ := e.Schema.Get(i)
 		if err := e.writeField(field, buffer); err != nil {
 			return err
 		}
@@ -113,7 +113,7 @@ func (e *Entity) Write(buffer []byte) error {
 	defer e.mu.RUnlock()
 
 	// Verificar tamaño mínimo del buffer
-	minSize := e.Fields.CalculateSize()
+	minSize := e.Schema.CalculateSize()
 	if len(buffer) < minSize {
 		return fmt.Errorf("buffer too small for entity (required: %d, got: %d)", minSize, len(buffer))
 	}
@@ -127,7 +127,7 @@ func (e *Entity) writeField(field *Field, buffer []byte) error {
 			field.Name, field.EndPosition, len(buffer))
 	}
 
-	index, _ := e.Fields.IndexOf(field.Name)
+	index, _ := e.Schema.IndexOf(field.Name)
 	value := e.values[index]
 
 	if value == nil {
@@ -215,12 +215,12 @@ func (e *Entity) GetByName(name string) interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	field, err := e.Fields.GetByName(name)
+	field, err := e.Schema.GetByName(name)
 	if err != nil {
 		return nil
 	}
 	e.readField(field)
-	index, _ := e.Fields.IndexOf(field.Name)
+	index, _ := e.Schema.IndexOf(field.Name)
 	return e.values[index]
 }
 
@@ -243,7 +243,7 @@ func (e *Entity) SetByIndex(index int, value interface{}) error {
 		return fmt.Errorf("index out of range: %d", index)
 	}
 
-	field, err := e.Fields.Get(index)
+	field, err := e.Schema.Get(index)
 	if err != nil {
 		return err
 	}
@@ -267,12 +267,12 @@ func (e *Entity) SetByName(name string, value interface{}) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	index, ok := e.Fields.IndexOf(name)
+	index, ok := e.Schema.IndexOf(name)
 	if !ok {
 		return fmt.Errorf("field not found: %s", name)
 	}
 
-	field, err := e.Fields.Get(index)
+	field, err := e.Schema.Get(index)
 	if err != nil {
 		return err
 	}
@@ -298,11 +298,11 @@ func (e *Entity) String() string {
 
 	var sb strings.Builder
 	sb.WriteString("{")
-	for i := 0; i < e.Fields.Len(); i++ {
+	for i := 0; i < e.Schema.Len(); i++ {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		field, _ := e.Fields.Get(i)
+		field, _ := e.Schema.Get(i)
 		sb.WriteString(fmt.Sprintf("%s: %v", field.Name, e.GetByName(field.Name)))
 	}
 	sb.WriteString("}")

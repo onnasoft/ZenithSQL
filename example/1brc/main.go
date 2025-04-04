@@ -72,7 +72,7 @@ func processData(table *catalog.Table) {
 	sem := make(chan struct{}, numWorkers)
 	pool := sync.Pool{
 		New: func() interface{} {
-			record, _ := entity.NewEntity(table.Fields)
+			record, _ := entity.NewEntity(table.Schema)
 			return record
 		},
 	}
@@ -106,7 +106,7 @@ func processData(table *catalog.Table) {
 
 func runWorker(record *entity.Entity, buffer []byte, rowSize int) float64 {
 	var sum float64
-	field, _ := record.Fields.GetByName("temperature")
+	field, _ := record.Schema.GetByName("temperature")
 	tempOffset := field.StartPosition
 	endPos := field.EndPosition
 

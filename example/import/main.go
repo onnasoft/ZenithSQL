@@ -240,7 +240,7 @@ func parseLine(table *catalog.Table, line []byte) (*entity.Entity, error) {
 		return nil, fmt.Errorf("invalid format, expected 2 parts got %d", len(parts))
 	}
 
-	record, err := entity.NewEntity(table.Fields)
+	record, err := entity.NewEntity(table.Schema)
 	if err != nil {
 		return nil, fmt.Errorf("creating entity: %w", err)
 	}

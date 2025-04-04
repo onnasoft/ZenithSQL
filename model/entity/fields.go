@@ -17,32 +17,32 @@ func (dt DataType) IsNumeric() bool {
 	return dt == Int64Type || dt == Float64Type
 }
 
-type Fields struct {
+type Schema struct {
 	fields    []*Field
 	nameIndex map[string]int
 	mu        sync.RWMutex
 }
 
-func NewFields() *Fields {
-	return &Fields{
+func NewSchema() *Schema {
+	return &Schema{
 		fields:    make([]*Field, 0),
 		nameIndex: make(map[string]int),
 	}
 }
 
-func (f *Fields) Iter() []*Field {
+func (f *Schema) Iter() []*Field {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.fields
 }
 
-func (f *Fields) Len() int {
+func (f *Schema) Len() int {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return len(f.fields)
 }
 
-func (f *Fields) Get(index int) (*Field, error) {
+func (f *Schema) Get(index int) (*Field, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -52,7 +52,7 @@ func (f *Fields) Get(index int) (*Field, error) {
 	return f.fields[index], nil
 }
 
-func (fs *Fields) CalculateSize() int {
+func (fs *Schema) CalculateSize() int {
 	total := 0
 	for _, f := range fs.fields {
 		total += 1 + f.Length // 1 byte para el flag + longitud del campo
@@ -60,7 +60,7 @@ func (fs *Fields) CalculateSize() int {
 	return total
 }
 
-func (fs *Fields) PrepareOffsets() {
+func (fs *Schema) PrepareOffsets() {
 	offset := 0
 	log.Println("Preparing offsets for fields...", fs.Len())
 	for _, f := range fs.Iter() {
@@ -74,7 +74,7 @@ func (fs *Fields) PrepareOffsets() {
 	}
 }
 
-func (f *Fields) GetByName(name string) (*Field, error) {
+func (f *Schema) GetByName(name string) (*Field, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -84,7 +84,7 @@ func (f *Fields) GetByName(name string) (*Field, error) {
 	return nil, fmt.Errorf("field %s not found", name)
 }
 
-func (f *Fields) Insert(index int, field *Field) error {
+func (f *Schema) Insert(index int, field *Field) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -108,7 +108,7 @@ func (f *Fields) Insert(index int, field *Field) error {
 	return nil
 }
 
-func (f *Fields) Add(field *Field) error {
+func (f *Schema) Add(field *Field) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -121,7 +121,7 @@ func (f *Fields) Add(field *Field) error {
 	return nil
 }
 
-func (f *Fields) Remove(index int) error {
+func (f *Schema) Remove(index int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -142,7 +142,7 @@ func (f *Fields) Remove(index int) error {
 	return nil
 }
 
-func (f *Fields) RemoveByName(name string) error {
+func (f *Schema) RemoveByName(name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -161,7 +161,7 @@ func (f *Fields) RemoveByName(name string) error {
 	return nil
 }
 
-func (f *Fields) IndexOf(name string) (int, bool) {
+func (f *Schema) IndexOf(name string) (int, bool) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -169,18 +169,18 @@ func (f *Fields) IndexOf(name string) (int, bool) {
 	return index, ok
 }
 
-func (f *Fields) rebuildIndex() {
+func (f *Schema) rebuildIndex() {
 	f.nameIndex = make(map[string]int)
 	for i, field := range f.fields {
 		f.nameIndex[field.Name] = i
 	}
 }
 
-func (f *Fields) Clone() *Fields {
+func (f *Schema) Clone() *Schema {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	newFields := NewFields()
+	newSchema := NewSchema()
 	for _, field := range f.fields {
 		// Create a deep copy of the field
 		newField := &Field{
@@ -190,8 +190,8 @@ func (f *Fields) Clone() *Fields {
 			Validators: make([]validate.Validator, len(field.Validators)),
 		}
 		copy(newField.Validators, field.Validators)
-		newFields.Add(newField)
+		newSchema.Add(newField)
 	}
-	newFields.PrepareOffsets()
-	return newFields
+	newSchema.PrepareOffsets()
+	return newSchema
 }

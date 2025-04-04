@@ -26,7 +26,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	record, err := entity.NewEntity(table.Fields)
+	record, err := entity.NewEntity(table.Schema)
 	if err != nil {
 		log.Fatal(err)
 	}

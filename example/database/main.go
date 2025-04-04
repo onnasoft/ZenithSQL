@@ -78,7 +78,7 @@ func setupDatabaseAndTable() (*catalog.Database, *catalog.Table) {
 func insertRecords(table *catalog.Table, users []map[string]interface{}) {
 	records := make([]*entity.Entity, len(users))
 	for i, user := range users {
-		record, err := entity.NewEntity(table.Fields)
+		record, err := entity.NewEntity(table.Schema)
 		if err != nil {
 			log.Fatal("Error creating entity: ", err)
 		}

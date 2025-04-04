@@ -29,7 +29,7 @@ type Table struct {
 	mu            sync.RWMutex
 	Name          string
 	Path          string
-	Fields        *entity.Fields
+	Schema        *entity.Schema
 	length        int64
 	effectiveSize int
 	file          *os.File
@@ -79,7 +79,7 @@ func NewTable(config *TableConfig) (*Table, error) {
 		Length: 8,
 	}
 	fields = append(fields, config.Fields...)
-	timeFields := []*entity.Field{
+	timeSchema := []*entity.Field{
 		{
 			Name:   "created_at",
 			Type:   entity.TimestampType,
@@ -94,9 +94,9 @@ func NewTable(config *TableConfig) (*Table, error) {
 			Length: 8,
 		},
 	}
-	fields = append(fields, timeFields...)
+	fields = append(fields, timeSchema...)
 	t.effectiveSize = 0
-	defaultFields := entity.NewFields()
+	schema := entity.NewSchema()
 	for i := 0; i < len(fields); i++ {
 		field := reflect.ValueOf(fields[i]).Elem().Interface().(entity.Field)
 		field.Prepare(t.effectiveSize)
@@ -106,9 +106,9 @@ func NewTable(config *TableConfig) (*Table, error) {
 			field.Validators = append(field.Validators, &validate.StringLength{Min: 0, Max: field.Length})
 		}
 
-		defaultFields.Add(&field)
+		schema.Add(&field)
 	}
-	t.Fields = defaultFields
+	t.Schema = schema
 	t.effectiveSize = t.calculateEffectiveSize()
 	t.fieldOffsets = t.calculateFieldOffsets()
 	t.buildFieldIndex()
@@ -148,12 +148,12 @@ func OpenTable(config *TableConfig) (*Table, error) {
 		return nil, err
 	}
 
-	defaultFields := entity.NewFields()
+	defaultSchema := entity.NewSchema()
 	for i := 0; i < len(fields); i++ {
 		field := reflect.ValueOf(fields[i]).Elem().Interface().(entity.Field)
-		defaultFields.Add(&field)
+		defaultSchema.Add(&field)
 	}
-	t.Fields = defaultFields
+	t.Schema = defaultSchema
 
 	t.effectiveSize = t.calculateEffectiveSize()
 	t.fieldOffsets = t.calculateFieldOffsets()
@@ -182,10 +182,10 @@ func loadSchema(fullPath string) ([]*entity.Field, error) {
 
 	length := len(data["fields"].([]interface{}))
 	fields := make([]*entity.Field, length)
-	dataFields := data["fields"].([]interface{})
+	dataSchema := data["fields"].([]interface{})
 
 	for i := 0; i < length; i++ {
-		current := dataFields[i]
+		current := dataSchema[i]
 		fields[i] = &entity.Field{}
 		err := fields[i].FromMap(current.(map[string]interface{}))
 		if err != nil {
@@ -210,10 +210,10 @@ func (t *Table) saveSchema() error {
 
 	enc := json.NewEncoder(file)
 	enc.SetIndent("", "  ")
-	fields := make([]interface{}, t.Fields.Len())
+	fields := make([]interface{}, t.Schema.Len())
 
-	for i := 0; i < t.Fields.Len(); i++ {
-		field, _ := t.Fields.Get(i)
+	for i := 0; i < t.Schema.Len(); i++ {
+		field, _ := t.Schema.Get(i)
 		fields[i] = field.ToMap()
 	}
 
@@ -325,7 +325,7 @@ func (t *Table) processBatch(batch []*entity.Entity) error {
 }
 
 func (t *Table) buildFieldIndex() {
-	for i, field := range t.Fields.Iter() {
+	for i, field := range t.Schema.Iter() {
 		t.fieldIndex[field.Name] = i
 	}
 }
@@ -356,7 +356,7 @@ func (t *Table) fullRead(id int64) (*entity.Entity, error) {
 		return nil, fmt.Errorf("failed to read row %d: %w", id, err)
 	}
 
-	record, _ := entity.NewEntity(t.Fields)
+	record, _ := entity.NewEntity(t.Schema)
 	if err := record.Read(buffer); err != nil {
 		return nil, fmt.Errorf("failed to parse row %d: %w", id, err)
 	}
@@ -375,7 +375,7 @@ func (t *Table) BulkSum(fieldName string) (float64, error) {
 		return 0, fmt.Errorf("field %s not found", fieldName)
 	}
 
-	field, err := t.Fields.Get(idx)
+	field, err := t.Schema.Get(idx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get field %s: %w", fieldName, err)
 	}
@@ -435,16 +435,16 @@ func (t *Table) BulkCount(condition func(*entity.Entity) bool) (int64, error) {
 
 func (t *Table) calculateEffectiveSize() int {
 	size := 0
-	for _, col := range t.Fields.Iter() {
+	for _, col := range t.Schema.Iter() {
 		size += col.Length + 1
 	}
 	return size
 }
 
 func (t *Table) calculateFieldOffsets() []int {
-	offsets := make([]int, t.Fields.Len())
+	offsets := make([]int, t.Schema.Len())
 	offset := 0
-	for i, col := range t.Fields.Iter() {
+	for i, col := range t.Schema.Iter() {
 		offsets[i] = offset
 		offset += col.Length + 1
 	}
