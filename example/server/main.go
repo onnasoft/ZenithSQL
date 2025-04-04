@@ -4,10 +4,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/messageserver"
-	"github.com/onnasoft/ZenithSQL/network"
-	"github.com/onnasoft/ZenithSQL/statement"
-	"github.com/onnasoft/ZenithSQL/transport"
+	"github.com/onnasoft/ZenithSQL/io/statement"
+	"github.com/onnasoft/ZenithSQL/io/transport"
+	"github.com/onnasoft/ZenithSQL/net/messageserver"
+	"github.com/onnasoft/ZenithSQL/net/network"
 	"github.com/sirupsen/logrus"
 )
 

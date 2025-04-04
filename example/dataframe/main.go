@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/onnasoft/ZenithSQL/engine"
-	"github.com/onnasoft/ZenithSQL/entity"
+	"github.com/onnasoft/ZenithSQL/core/engine"
+	"github.com/onnasoft/ZenithSQL/model/entity"
 )
 
 var tablename = "test"

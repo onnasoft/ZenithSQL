@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/engine"
-	"github.com/onnasoft/ZenithSQL/entity"
-	"github.com/onnasoft/ZenithSQL/utils"
+	"github.com/onnasoft/ZenithSQL/core/engine"
+	"github.com/onnasoft/ZenithSQL/model/entity"
 	"github.com/onnasoft/ZenithSQL/validate"
 	"github.com/sirupsen/logrus"
 )
@@ -14,9 +12,6 @@ import (
 var log = logrus.New()
 
 func main() {
-	utils.Clone(entity.Field{})
-	utils.Clone(&entity.Field{})
-
 	db, table := setupDatabaseAndTable()
 	defer db.Close()
 	users := []map[string]interface{}{
@@ -31,7 +26,7 @@ func main() {
 		log.Fatal("Error getting schema: ", err)
 	}
 
-	table, err = schema.LoadTable("users")
+	table, err = schema.OpenTable("users")
 	if err != nil {
 		log.Fatal("Error loading table: ", err)
 	}
@@ -41,7 +36,7 @@ func main() {
 		log.Fatal("Error getting record: ", err)
 	}
 
-	fmt.Println(record)
+	log.Println(record)
 }
 
 func setupDatabaseAndTable() (*engine.Database, *engine.Table) {

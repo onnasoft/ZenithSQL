@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/engine"
-	"github.com/onnasoft/ZenithSQL/entity"
+	"github.com/onnasoft/ZenithSQL/core/engine"
+	"github.com/onnasoft/ZenithSQL/model/entity"
 	"golang.org/x/sys/unix"
 )
 
@@ -80,10 +80,6 @@ func initializeDatabase() (*engine.Database, *engine.Table, error) {
 			Name:   "temperature",
 			Type:   entity.Float64Type,
 			Length: 8,
-		},
-		{
-			Name: "record_time",
-			Type: entity.TimestampType,
 		},
 	}
 
@@ -260,10 +256,6 @@ func parseLine(table *engine.Table, line []byte) (*entity.Entity, error) {
 
 	if err := record.SetByName("temperature", temp); err != nil {
 		return nil, fmt.Errorf("setting temperature: %w", err)
-	}
-
-	if err := record.SetByName("record_time", time.Now()); err != nil {
-		return nil, fmt.Errorf("setting timestamp: %w", err)
 	}
 
 	return record, nil
