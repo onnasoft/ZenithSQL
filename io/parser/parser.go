@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/onnasoft/ZenithSQL/statement"
+	"github.com/onnasoft/ZenithSQL/io/statement"
 )
 
 type Parser struct{}

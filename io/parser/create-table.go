@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onnasoft/ZenithSQL/statement"
+	"github.com/onnasoft/ZenithSQL/io/statement"
 )
 
 func (p *Parser) parseCreateTable(sql string) (*statement.CreateTableStatement, error) {

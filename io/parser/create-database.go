@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/onnasoft/ZenithSQL/statement"
+	"github.com/onnasoft/ZenithSQL/io/statement"
 )
 
 func (p *Parser) parseCreateDatabase(sql string) (*statement.CreateDatabaseStatement, error) {
