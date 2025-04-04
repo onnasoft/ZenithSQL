@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/onnasoft/ZenithSQL/core/engine"
+	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/onnasoft/ZenithSQL/model/entity"
 )
 
@@ -48,8 +48,8 @@ func main() {
 	log.Println(record)
 }
 
-func initializeDatabase() (*engine.Database, error) {
-	db, err := engine.NewDatabase("testdb", "./data")
+func initializeDatabase() (*catalog.Database, error) {
+	db, err := catalog.NewDatabase("testdb", "./data")
 	if err != nil {
 		return nil, fmt.Errorf("creating database: %w", err)
 	}

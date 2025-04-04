@@ -8,7 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/onnasoft/ZenithSQL/core/engine"
+	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/onnasoft/ZenithSQL/model/entity"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
@@ -22,7 +22,7 @@ const (
 var log = logrus.New()
 
 func main() {
-	db, err := engine.OpenDatabase("testdb", "./data")
+	db, err := catalog.OpenDatabase("testdb", "./data")
 	if err != nil {
 		log.Fatalf("error getting database %v, %v", "testdb", err)
 	}
@@ -40,7 +40,7 @@ func main() {
 	processData(table)
 }
 
-func processData(table *engine.Table) {
+func processData(table *catalog.Table) {
 	startTime := time.Now()
 
 	filePath := filepath.Join(table.Path, "data.bin")

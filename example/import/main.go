@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/core/engine"
+	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/onnasoft/ZenithSQL/model/entity"
 	"golang.org/x/sys/unix"
 )
@@ -59,8 +59,8 @@ func main() {
 	showFinalStats(stats)
 }
 
-func initializeDatabase() (*engine.Database, *engine.Table, error) {
-	db, err := engine.NewDatabase("testdb", "./data")
+func initializeDatabase() (*catalog.Database, *catalog.Table, error) {
+	db, err := catalog.NewDatabase("testdb", "./data")
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating database: %w", err)
 	}
@@ -91,7 +91,7 @@ func initializeDatabase() (*engine.Database, *engine.Table, error) {
 	return db, table, nil
 }
 
-func importFileConcurrent(filePath string, table *engine.Table, stats *ImportStats) error {
+func importFileConcurrent(filePath string, table *catalog.Table, stats *ImportStats) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
@@ -200,7 +200,7 @@ func importFileConcurrent(filePath string, table *engine.Table, stats *ImportSta
 	return nil
 }
 
-func batchInsertWorker(table *engine.Table, records <-chan *entity.Entity) error {
+func batchInsertWorker(table *catalog.Table, records <-chan *entity.Entity) error {
 	batch := make([]*entity.Entity, 0, batchSize)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -234,7 +234,7 @@ func batchInsertWorker(table *engine.Table, records <-chan *entity.Entity) error
 	}
 }
 
-func parseLine(table *engine.Table, line []byte) (*entity.Entity, error) {
+func parseLine(table *catalog.Table, line []byte) (*entity.Entity, error) {
 	parts := bytes.Split(line, []byte{separator})
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid format, expected 2 parts got %d", len(parts))

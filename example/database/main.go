@@ -3,7 +3,7 @@ package main
 import (
 	"time"
 
-	"github.com/onnasoft/ZenithSQL/core/engine"
+	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/onnasoft/ZenithSQL/model/entity"
 	"github.com/onnasoft/ZenithSQL/validate"
 	"github.com/sirupsen/logrus"
@@ -39,8 +39,8 @@ func main() {
 	log.Println(record)
 }
 
-func setupDatabaseAndTable() (*engine.Database, *engine.Table) {
-	db, err := engine.NewDatabase("testdb", "./data")
+func setupDatabaseAndTable() (*catalog.Database, *catalog.Table) {
+	db, err := catalog.NewDatabase("testdb", "./data")
 	if err != nil {
 		log.Fatal("Error creating database: ", err)
 	}
@@ -75,7 +75,7 @@ func setupDatabaseAndTable() (*engine.Database, *engine.Table) {
 	return db, table
 }
 
-func insertRecords(table *engine.Table, users []map[string]interface{}) {
+func insertRecords(table *catalog.Table, users []map[string]interface{}) {
 	records := make([]*entity.Entity, len(users))
 	for i, user := range users {
 		record, err := entity.NewEntity(table.Fields)
@@ -101,7 +101,7 @@ func insertRecords(table *engine.Table, users []map[string]interface{}) {
 	}
 }
 
-func retrieveAndLogRecords(table *engine.Table) {
+func retrieveAndLogRecords(table *catalog.Table) {
 	for i := int64(1); i <= table.Length(); i++ {
 		record, err := table.Get(i)
 		if err != nil {
