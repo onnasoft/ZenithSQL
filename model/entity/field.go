@@ -32,13 +32,6 @@ func (e *Field) IsDate() bool {
 	return e.Type == TimestampType
 }
 
-func (e *Field) DecodeNumeric(buffer []byte) (interface{}, error) {
-	if parseFunc, ok := parseTypes[e.Type]; ok {
-		return parseFunc(buffer), nil
-	}
-	return nil, fmt.Errorf("unsupported type %s", e.Type)
-}
-
 func (f *Field) Prepare(offset int) {
 	if f.Length <= 0 {
 		log.Fatalf("invalid length %d for field %s", f.Length, f.Name)

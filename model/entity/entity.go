@@ -4,184 +4,125 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/onnasoft/ZenithSQL/core/buffer"
 )
 
 type Entity struct {
-	buff        []byte
-	mu          sync.RWMutex
-	checkValues bool
-	Schema      *Schema
-	values      []interface{}
+	RW     buffer.ReadWriter
+	mu     sync.RWMutex
+	Schema *Schema
+	values map[string]interface{}
+	offset int
 }
 
-func NewEntity(fields *Schema) (*Entity, error) {
-	if fields == nil {
-		return nil, fmt.Errorf("fields cannot be nil")
+type EntityConfig struct {
+	Schema *Schema
+	RW     buffer.ReadWriter
+}
+
+func NewEntity(config *EntityConfig) (*Entity, error) {
+	if config.RW == nil {
+		return nil, fmt.Errorf("readwriter cannot be nil")
+	}
+	if config.Schema == nil {
+		return nil, fmt.Errorf("schema cannot be nil")
 	}
 
 	return &Entity{
-		checkValues: true,
-		Schema:      fields,
-		values:      make([]interface{}, fields.Len()),
+		Schema: config.Schema,
+		RW:     config.RW,
+		values: make(map[string]interface{}),
 	}, nil
 }
 
-// EnableValidation activa la validación de valores
-func (e *Entity) EnableValidation() {
+func (e *Entity) setValue(name string, value interface{}) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.checkValues = true
+	e.values[name] = value
+	e.mu.Unlock()
 }
 
-func (e *Entity) DisableValidation() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.checkValues = false
-}
-
-func (e *Entity) IsValidationEnabled() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.checkValues
-}
-
-// SetFieldDirect establece un campo directamente desde bytes serializados
-func (e *Entity) SetFieldDirect(name string, data []byte) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	field, err := e.Schema.GetByName(name)
+func (e *Entity) SetValue(name string, value interface{}) error {
+	field, err := e.Schema.GetFieldByName(name)
 	if err != nil {
 		return err
 	}
-
-	value, err := decodeField(field, data)
-	if err != nil {
-		return err
+	if !isValidType(field.Type, value) {
+		return fmt.Errorf("invalid type for field %s", field.Name)
 	}
 
-	index, _ := e.Schema.IndexOf(name)
-	e.values[index] = value
-	return nil
-}
-
-func (e *Entity) Read(buffer []byte) error {
-	e.buff = buffer
-	return nil
-}
-
-func (e *Entity) readField(field *Field) error {
-	index, _ := e.Schema.IndexOf(field.Name)
-	if e.values[index] != nil {
-		return nil
-	}
-
-	if field.IsSettedFlagPos >= len(e.buff) {
-		return fmt.Errorf("buffer too small for field %s", field.Name)
-	}
-
-	if e.buff[field.IsSettedFlagPos] == 0 {
-		e.values[index] = nil
-		return nil
-	}
-
-	if field.EndPosition > len(e.buff) {
-		return fmt.Errorf("buffer too small for field %s data", field.Name)
-	}
-
-	value, err := decodeField(field, e.buff[field.StartPosition:field.EndPosition])
-	if err != nil {
-		return err
-	}
-
-	e.values[index] = value
-	return nil
-}
-
-func (e *Entity) writeFull(buffer []byte) error {
-	for i := 0; i < e.Schema.Len(); i++ {
-		field, _ := e.Schema.Get(i)
-		if err := e.writeField(field, buffer); err != nil {
+	for _, validator := range field.Validators {
+		if err := validator.Validate(value, field.Name); err != nil {
 			return err
 		}
 	}
+	e.setValue(field.Name, value)
 	return nil
 }
 
-func (e *Entity) Write(buffer []byte) error {
+func (e *Entity) GetValue(name string) interface{} {
+	fmt.Println("GetValue Name:", name)
 	e.mu.RLock()
-	defer e.mu.RUnlock()
-
-	// Verificar tamaño mínimo del buffer
-	minSize := e.Schema.CalculateSize()
-	if len(buffer) < minSize {
-		return fmt.Errorf("buffer too small for entity (required: %d, got: %d)", minSize, len(buffer))
+	val, ok := e.values[name]
+	e.mu.RUnlock()
+	if ok {
+		return val
 	}
+	fmt.Println("GetValue Name not found:", name)
 
-	return e.writeFull(buffer)
-}
-
-func (e *Entity) writeField(field *Field, buffer []byte) error {
-	if field.EndPosition > len(buffer) {
-		return fmt.Errorf("buffer overflow for field %s (required to %d, buffer size: %d)",
-			field.Name, field.EndPosition, len(buffer))
-	}
-
-	index, _ := e.Schema.IndexOf(field.Name)
-	value := e.values[index]
-
-	if value == nil {
-		buffer[field.IsSettedFlagPos] = 0
+	field, err := e.Schema.GetFieldByName(name)
+	if err != nil {
 		return nil
 	}
-	buffer[field.IsSettedFlagPos] = 1
+	fmt.Println("GetValue Field:", field)
 
-	if e.checkValues && !isValidType(field.Type, value) {
-		return fmt.Errorf("invalid type %T for field %s (expected %s)",
-			value, field.Name, field.Type)
-	}
-
-	dataSegment := buffer[field.StartPosition:field.EndPosition:field.EndPosition]
-	return encodeField(field, value, dataSegment)
-}
-
-func encodeField(field *Field, value interface{}, buffer []byte) error {
-	if field.Length <= 0 {
-		return fmt.Errorf("invalid field length %d for %s", field.Length, field.Name)
-	}
-	if len(buffer) < field.Length {
-		return fmt.Errorf("buffer too small for field %s (need %d, got %d, start: %d, end: %d)",
-			field.Name, field.Length, len(buffer), field.StartPosition, field.EndPosition)
-	}
-	if value == nil {
+	data := make([]byte, field.Length)
+	if _, err := e.RW.ReadAt(data, e.offset+field.StartPosition); err != nil {
 		return nil
 	}
 
-	if writer, ok := writerTypes[field.Type]; ok {
-		return writer(buffer, field, value)
+	fmt.Println("GetValue Data:", data)
+
+	value, err := decodeField(field, data)
+	fmt.Println("GetValue Decoded Value:", value)
+	if err == nil {
+		e.mu.Lock()
+		e.values[name] = value
+		e.mu.Unlock()
 	}
-	return fmt.Errorf("unsupported field type: %s", field.Type)
+
+	fmt.Println("GetValue Decoded Value:", value)
+
+	return value
 }
 
-func clear(buf []byte) {
-	for i := range buf {
-		buf[i] = 0
+func (e *Entity) Save() error {
+	row := make([]byte, e.Schema.Size())
+	for _, field := range e.Schema.Fields {
+		fmt.Println("Field Name:", field.Name)
+		if err := encodeField(field, e.GetValue(field.Name), row[field.StartPosition:field.EndPosition]); err != nil {
+			return err
+		}
+		fmt.Println("Field Value:", e.GetValue(field.Name))
 	}
+	_, err := e.RW.Write(row)
+	return err
 }
 
 func (e *Entity) Reset() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-
-	for i := range e.values {
-		e.values[i] = nil
-	}
+	e.values = make(map[string]interface{})
 }
 
-func (e *Entity) Values() []interface{} {
+func (e *Entity) Values() map[string]interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return append([]interface{}{}, e.values...)
+	copy := make(map[string]interface{}, len(e.values))
+	for k, v := range e.values {
+		copy[k] = v
+	}
+	return copy
 }
 
 func (e *Entity) Len() int {
@@ -190,128 +131,16 @@ func (e *Entity) Len() int {
 	return len(e.values)
 }
 
-func (e *Entity) Get(index interface{}) interface{} {
-	switch v := index.(type) {
-	case int:
-		return e.GetByIndex(v)
-	case string:
-		return e.GetByName(v)
-	default:
-		return nil
-	}
-}
-
-func (e *Entity) GetByIndex(index int) interface{} {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
-	if index < 0 || index >= len(e.values) {
-		return nil
-	}
-	return e.values[index]
-}
-
-func (e *Entity) GetByName(name string) interface{} {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
-	field, err := e.Schema.GetByName(name)
-	if err != nil {
-		return nil
-	}
-	e.readField(field)
-	index, _ := e.Schema.IndexOf(field.Name)
-	return e.values[index]
-}
-
-func (e *Entity) Set(index interface{}, value interface{}) error {
-	switch v := index.(type) {
-	case int:
-		return e.SetByIndex(v, value)
-	case string:
-		return e.SetByName(v, value)
-	default:
-		return fmt.Errorf("invalid index type: %T", index)
-	}
-}
-
-func (e *Entity) SetByIndex(index int, value interface{}) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if index < 0 || index >= len(e.values) {
-		return fmt.Errorf("index out of range: %d", index)
-	}
-
-	field, err := e.Schema.Get(index)
-	if err != nil {
-		return err
-	}
-
-	if e.checkValues {
-		if !isValidType(field.Type, value) {
-			return fmt.Errorf("invalid type for field %s", field.Name)
-		}
-		for _, validator := range field.Validators {
-			if err := validator.Validate(value, field.Name); err != nil {
-				return err
-			}
-		}
-	}
-
-	e.values[index] = value
-	return nil
-}
-
-func (e *Entity) SetByName(name string, value interface{}) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	index, ok := e.Schema.IndexOf(name)
-	if !ok {
-		return fmt.Errorf("field not found: %s", name)
-	}
-
-	field, err := e.Schema.Get(index)
-	if err != nil {
-		return err
-	}
-
-	if e.checkValues {
-		if !isValidType(field.Type, value) {
-			return fmt.Errorf("invalid type for field %s", field.Name)
-		}
-		for _, validator := range field.Validators {
-			if err := validator.Validate(value, field.Name); err != nil {
-				return err
-			}
-		}
-	}
-
-	e.values[index] = value
-	return nil
-}
-
 func (e *Entity) String() string {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
 	var sb strings.Builder
 	sb.WriteString("{")
-	for i := 0; i < e.Schema.Len(); i++ {
+	for i, field := range e.Schema.Fields {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		field, _ := e.Schema.Get(i)
-		sb.WriteString(fmt.Sprintf("%s: %v", field.Name, e.GetByName(field.Name)))
+		val := e.GetValue(field.Name)
+		sb.WriteString(fmt.Sprintf("%s: %v", field.Name, val))
 	}
 	sb.WriteString("}")
 	return sb.String()
-}
-
-func decodeField(field *Field, data []byte) (interface{}, error) {
-	if parser, ok := parseTypes[field.Type]; ok {
-		return parser(data), nil
-	}
-	return nil, fmt.Errorf("unsupported field type: %s", field.Type)
 }

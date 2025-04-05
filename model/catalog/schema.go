@@ -6,34 +6,38 @@ import (
 	"path/filepath"
 
 	"github.com/onnasoft/ZenithSQL/model/entity"
+	"github.com/sirupsen/logrus"
 )
 
 type Schema struct {
 	Name   string
 	Path   string
 	Tables map[string]*Table
+	logger *logrus.Logger
 }
 
-func NewSchema(name, path string) (*Schema, error) {
-	if err := os.MkdirAll(path, 0755); err != nil {
+type SchemaConfig struct {
+	Name   string
+	Path   string
+	Logger *logrus.Logger
+}
+
+func NewSchema(config *SchemaConfig) (*Schema, error) {
+	if err := os.MkdirAll(config.Path, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create schema directory: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(path, "tables"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(config.Path, "tables"), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create tables directory: %v", err)
 	}
-	return &Schema{
-		Name:   name,
-		Path:   path,
-		Tables: make(map[string]*Table),
-	}, nil
+	return OpenSchema(config)
 }
 
-func OpenSchema(name, path string) (*Schema, error) {
-	if _, err := os.Stat(path); err != nil {
+func OpenSchema(config *SchemaConfig) (*Schema, error) {
+	if _, err := os.Stat(config.Path); err != nil {
 		return nil, err
 	}
 
-	fullPath := filepath.Join(path, "tables")
+	fullPath := filepath.Join(config.Path, "tables")
 
 	tablesDir, err := os.ReadDir(fullPath)
 	if err != nil {
@@ -44,8 +48,9 @@ func OpenSchema(name, path string) (*Schema, error) {
 	for _, tableFS := range tablesDir {
 		if tableFS.IsDir() {
 			table, err := OpenTable(&TableConfig{
-				Name: tableFS.Name(),
-				Path: fullPath,
+				Name:   tableFS.Name(),
+				Path:   fullPath,
+				Logger: config.Logger,
 			})
 
 			if err != nil {
@@ -57,9 +62,10 @@ func OpenSchema(name, path string) (*Schema, error) {
 	}
 
 	return &Schema{
-		Name:   name,
-		Path:   path,
+		Name:   config.Name,
+		Path:   config.Path,
 		Tables: tables,
+		logger: config.Logger,
 	}, nil
 }
 
@@ -71,11 +77,12 @@ func (s *Schema) GetTable(name string) (*Table, error) {
 	return schema, nil
 }
 
-func (s *Schema) CreateTable(name string, fields []*entity.Field) (*Table, error) {
+func (s *Schema) CreateTable(name string, schema *entity.Schema) (*Table, error) {
 	t, err := NewTable(&TableConfig{
 		Name:   name,
 		Path:   filepath.Join(s.Path, "tables"),
-		Fields: fields,
+		Schema: schema,
+		Logger: s.logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create table: %v", err)
@@ -86,8 +93,9 @@ func (s *Schema) CreateTable(name string, fields []*entity.Field) (*Table, error
 
 func (s *Schema) OpenTable(name string) (*Table, error) {
 	t, err := OpenTable(&TableConfig{
-		Name: name,
-		Path: filepath.Join(s.Path, "tables"),
+		Name:   name,
+		Path:   filepath.Join(s.Path, "tables"),
+		Logger: s.logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create table: %v", err)

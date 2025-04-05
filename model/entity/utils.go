@@ -8,111 +8,110 @@ import (
 	"time"
 )
 
-var writerTypes = map[DataType]func(buffer []byte, field *Field, val interface{}) error{
-	Int8Type: func(buffer []byte, field *Field, value interface{}) error {
+var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
+	Int8Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(int8)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Int8 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Int8")
 		}
-		buffer[field.StartPosition] = uint8(v)
+		buffer[0] = uint8(v)
 		return nil
 	},
-	Int16Type: func(buffer []byte, field *Field, value interface{}) error {
+	Int16Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(int16)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Int16 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Int16")
 		}
-		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], uint16(v))
+		binary.LittleEndian.PutUint16(buffer, uint16(v))
 		return nil
 	},
-	Int32Type: func(buffer []byte, field *Field, value interface{}) error {
+	Int32Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(int32)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Int32 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Int32")
 		}
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], uint32(v))
+		binary.LittleEndian.PutUint32(buffer, uint32(v))
 		return nil
 	},
-	Int64Type: func(buffer []byte, field *Field, value interface{}) error {
+	Int64Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(int64)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Int64 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Int64")
 		}
 		binary.LittleEndian.PutUint64(buffer, uint64(v))
 		return nil
 	},
-	Uint8Type: func(buffer []byte, field *Field, value interface{}) error {
+	Uint8Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(uint8)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Uint8 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Uint8")
 		}
-		buffer[field.StartPosition] = v
+		buffer[0] = v
 		return nil
 	},
-	Uint16Type: func(buffer []byte, field *Field, value interface{}) error {
+	Uint16Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(uint16)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Uint16 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Uint16")
 		}
-		binary.LittleEndian.PutUint16(buffer[field.StartPosition:], v)
+		binary.LittleEndian.PutUint16(buffer, v)
 		return nil
 	},
-	Uint32Type: func(buffer []byte, field *Field, value interface{}) error {
+	Uint32Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(uint32)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Uint32 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Uint32")
 		}
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], v)
+		binary.LittleEndian.PutUint32(buffer, v)
 		return nil
 	},
-	Uint64Type: func(buffer []byte, field *Field, value interface{}) error {
+	Uint64Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(uint64)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Uint64 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Uint64")
 		}
-		binary.LittleEndian.PutUint64(buffer[field.StartPosition:], v)
+		binary.LittleEndian.PutUint64(buffer, v)
 		return nil
 	},
-	Float32Type: func(buffer []byte, field *Field, value interface{}) error {
+	Float32Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(float32)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Float32 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Float32")
 		}
-		binary.LittleEndian.PutUint32(buffer[field.StartPosition:], math.Float32bits(v))
+		binary.LittleEndian.PutUint32(buffer, math.Float32bits(v))
 		return nil
 	},
-	Float64Type: func(buffer []byte, field *Field, value interface{}) error {
+	Float64Type: func(buffer []byte, value interface{}) error {
 		v, ok := value.(float64)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Float64 field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Float64")
 		}
 		binary.LittleEndian.PutUint64(buffer, math.Float64bits(v))
 		return nil
 	},
-	StringType: func(buffer []byte, field *Field, value interface{}) error {
+	StringType: func(buffer []byte, value interface{}) error {
 		v, ok := value.(string)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for String field %s", field.Name)
+			return fmt.Errorf("type assertion failed for String")
 		}
 		copy(buffer, v)
-		// Rellenar con ceros si es necesario
-		if len(v) < field.Length {
+		if len(v) < len(buffer) {
 			clear(buffer[len(v):])
 		}
 		return nil
 	},
-	TimestampType: func(buffer []byte, field *Field, value interface{}) error {
+	TimestampType: func(buffer []byte, value interface{}) error {
 		v, ok := value.(time.Time)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Timestamp field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Timestamp")
 		}
 		binary.LittleEndian.PutUint64(buffer, uint64(v.UnixNano()))
 		return nil
 	},
-	BoolType: func(buffer []byte, field *Field, value interface{}) error {
+	BoolType: func(buffer []byte, value interface{}) error {
 		v, ok := value.(bool)
 		if !ok && value != nil {
-			return fmt.Errorf("type assertion failed for Bool field %s", field.Name)
+			return fmt.Errorf("type assertion failed for Bool")
 		}
 		if v {
 			buffer[0] = 1
@@ -146,6 +145,7 @@ var parseTypes = map[DataType]func([]byte) interface{}{
 		return uint32(binary.LittleEndian.Uint32(b))
 	},
 	Uint64Type: func(b []byte) interface{} {
+		fmt.Println("Uint64Type Data:", b)
 		return uint64(binary.LittleEndian.Uint64(b))
 	},
 	Float32Type: func(b []byte) interface{} {
@@ -188,4 +188,30 @@ func isValidType(dt DataType, val interface{}) bool {
 	default:
 		return false
 	}
+}
+func decodeField(field *Field, data []byte) (interface{}, error) {
+	fmt.Println("decodeField Data:", data)
+	if parser, ok := parseTypes[field.Type]; ok {
+		fmt.Println("decodeField Parser exists for type:", field.Type)
+		return parser(data), nil
+	}
+	return nil, fmt.Errorf("unsupported field type: %s", field.Type)
+}
+
+func encodeField(field *Field, value interface{}, buffer []byte) error {
+	if field.Length <= 0 {
+		return fmt.Errorf("invalid field length %d for %s", field.Length, field.Name)
+	}
+	if len(buffer) < field.Length {
+		return fmt.Errorf("buffer too small for field %s (need %d, got %d, start: %d, end: %d)",
+			field.Name, field.Length, len(buffer), field.StartPosition, field.EndPosition)
+	}
+	if value == nil {
+		return nil
+	}
+
+	if writer, ok := writerTypes[field.Type]; ok {
+		return writer(buffer, value)
+	}
+	return fmt.Errorf("unsupported field type: %s", field.Type)
 }
