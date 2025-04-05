@@ -16,37 +16,37 @@ import (
 )
 
 const (
-	DataSchemaFile = "data.schema.json"
-	MetaSchemaFile = "meta.schema.json"
-	DataBinFile    = "data.bin"
-	MetaBinFile    = "meta.bin"
-	IndexFileName  = "index.idx"
-	StatsFileName  = "stats.json"
-	LogFileName    = "wal.log"
+	FileDataSchema = "data.schema.json"
+	FileMetaSchema = "meta.schema.json"
+	FileDataBin    = "data.bin"
+	FileMetaBin    = "meta.bin"
+	FileIndex      = "index.idx"
+	FileStats      = "stats.json"
+	FileLog        = "wal.log"
 )
 
 type Table struct {
 	Name           string
-	Path           string
-	DataSchemaFile string
-	MetaSchemaFile string
-	DataBinFile    string
-	MetaBinFile    string
-	IndexFile      string
-	StatsFile      string
-	LogFile        string
-	metaSchema     *entity.Schema
-	dataSchema     *entity.Schema
-	metaDataBuf    *buffer.Buffer
-	dataBuf        *buffer.Buffer
-	indexBuf       *buffer.Buffer
-	statsBuf       *buffer.Buffer
-	logBuf         *buffer.Buffer
-	logger         *logrus.Logger
-	stats          *TableStats
-	rows           atomic.Uint64
-	rowSize        atomic.Uint64
-	insertLock     sync.Mutex
+	BasePath       string
+	PathDataSchema string
+	PathMetaSchema string
+	PathDataBin    string
+	PathMetaBin    string
+	PathIndex      string
+	PathStats      string
+	PathLog        string
+	SchemaData     *entity.Schema
+	SchemaMeta     *entity.Schema
+	BufData        *buffer.Buffer
+	BufMeta        *buffer.Buffer
+	BufIndex       *buffer.Buffer
+	BufStats       *buffer.Buffer
+	BufLog         *buffer.Buffer
+	Logger         *logrus.Logger
+	Stats          *TableStats
+	RowCount       atomic.Uint64
+	RowSize        atomic.Uint64
+	insertMutex    sync.Mutex
 }
 
 type TableConfig struct {
@@ -56,64 +56,65 @@ type TableConfig struct {
 	Logger *logrus.Logger
 }
 
-func NewTable(config *TableConfig) (*Table, error) {
-	if config.Schema == nil {
+func NewTable(cfg *TableConfig) (*Table, error) {
+	if cfg.Schema == nil {
 		return nil, errors.New("schema cannot be nil")
 	}
 
-	if err := os.MkdirAll(filepath.Join(config.Path, config.Name), os.ModePerm); err != nil {
+	tableDir := filepath.Join(cfg.Path, cfg.Name)
+	if err := os.MkdirAll(tableDir, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("failed to create table directory: %w", err)
 	}
 
-	config.Schema.Lock()
-	table, err := OpenTable(config)
+	cfg.Schema.Lock()
+	table, err := OpenTable(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open table: %w", err)
 	}
 
-	if err = saveSchema(table.DataSchemaFile, config.Schema); err != nil {
+	if err = saveSchema(table.PathDataSchema, cfg.Schema); err != nil {
 		return nil, fmt.Errorf("failed to save schema: %w", err)
 	}
 
 	return table, nil
 }
 
-func OpenTable(config *TableConfig) (*Table, error) {
-	if err := validateConfig(config); err != nil {
+func OpenTable(cfg *TableConfig) (*Table, error) {
+	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
 
-	base := filepath.Join(config.Path, config.Name)
+	base := filepath.Join(cfg.Path, cfg.Name)
 	if err := ensureTableDirectoryExists(base); err != nil {
 		return nil, err
 	}
 
-	metaSchema, err := loadOrCreateMeta(filepath.Join(base, MetaSchemaFile))
+	metaSchema, err := loadOrCreateMeta(filepath.Join(base, FileMetaSchema))
 	if err != nil {
 		return nil, err
 	}
 
-	if err := loadOrLockSchema(config, filepath.Join(base, DataSchemaFile)); err != nil {
+	if err := loadOrLockSchema(cfg, filepath.Join(base, FileDataSchema)); err != nil {
 		return nil, err
 	}
 
 	t := &Table{
-		Name:           config.Name,
-		Path:           config.Path,
-		DataSchemaFile: filepath.Join(base, DataSchemaFile),
-		MetaSchemaFile: filepath.Join(base, MetaSchemaFile),
-		DataBinFile:    filepath.Join(base, DataBinFile),
-		MetaBinFile:    filepath.Join(base, MetaBinFile),
-		IndexFile:      filepath.Join(base, IndexFileName),
-		StatsFile:      filepath.Join(base, StatsFileName),
-		LogFile:        filepath.Join(base, LogFileName),
-		metaSchema:     metaSchema,
-		dataSchema:     config.Schema,
-		logger:         config.Logger,
+		Name:           cfg.Name,
+		BasePath:       cfg.Path,
+		PathDataSchema: filepath.Join(base, FileDataSchema),
+		PathMetaSchema: filepath.Join(base, FileMetaSchema),
+		PathDataBin:    filepath.Join(base, FileDataBin),
+		PathMetaBin:    filepath.Join(base, FileMetaBin),
+		PathIndex:      filepath.Join(base, FileIndex),
+		PathStats:      filepath.Join(base, FileStats),
+		PathLog:        filepath.Join(base, FileLog),
+		SchemaMeta:     metaSchema,
+		SchemaData:     cfg.Schema,
+		Logger:         cfg.Logger,
 	}
 
-	if err := t.initializeFiles(); err != nil {
-		return nil, fmt.Errorf("failed to initialize table files: %w", err)
+	if err := t.initBuffers(); err != nil {
+		return nil, fmt.Errorf("failed to initialize buffers: %w", err)
 	}
 
 	if err := t.loadOrInitStats(); err != nil {
@@ -123,34 +124,30 @@ func OpenTable(config *TableConfig) (*Table, error) {
 	return t, nil
 }
 
-func (t *Table) initializeFiles() error {
+func (t *Table) initBuffers() error {
 	var err error
-	if err = os.MkdirAll(t.Path, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create table directory: %w", err)
+
+	if err = os.MkdirAll(t.BasePath, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create base path: %w", err)
 	}
 
-	t.metaDataBuf, err = buffer.NewBuffer(t.MetaBinFile)
-	if err != nil {
-		return fmt.Errorf("failed to create meta data buffer: %w", err)
+	if t.BufMeta, err = buffer.NewBuffer(t.PathMetaBin); err != nil {
+		return fmt.Errorf("failed to open meta buffer: %w", err)
 	}
-	t.dataBuf, err = buffer.NewBuffer(t.DataBinFile)
-	if err != nil {
-		return fmt.Errorf("failed to create data buffer: %w", err)
+	if t.BufData, err = buffer.NewBuffer(t.PathDataBin); err != nil {
+		return fmt.Errorf("failed to open data buffer: %w", err)
 	}
-	t.indexBuf, err = buffer.NewBuffer(t.IndexFile)
-	if err != nil {
-		return fmt.Errorf("failed to create index buffer: %w", err)
+	if t.BufIndex, err = buffer.NewBuffer(t.PathIndex); err != nil {
+		return fmt.Errorf("failed to open index buffer: %w", err)
 	}
-	t.statsBuf, err = buffer.NewBuffer(t.StatsFile)
-	if err != nil {
-		return fmt.Errorf("failed to create stats buffer: %w", err)
+	if t.BufStats, err = buffer.NewBuffer(t.PathStats); err != nil {
+		return fmt.Errorf("failed to open stats buffer: %w", err)
 	}
-	t.logBuf, err = buffer.NewBuffer(t.LogFile)
-	if err != nil {
-		return fmt.Errorf("failed to create log buffer: %w", err)
+	if t.BufLog, err = buffer.NewBuffer(t.PathLog); err != nil {
+		return fmt.Errorf("failed to open log buffer: %w", err)
 	}
 
-	if err := os.WriteFile(t.LogFile, []byte(""), 0644); err != nil {
+	if err := os.WriteFile(t.PathLog, []byte(""), 0644); err != nil {
 		return fmt.Errorf("failed to initialize log file: %w", err)
 	}
 
@@ -158,7 +155,7 @@ func (t *Table) initializeFiles() error {
 }
 
 func (t *Table) loadOrInitStats() error {
-	data, err := os.ReadFile(t.StatsFile)
+	data, err := os.ReadFile(t.PathStats)
 	if err != nil {
 		return err
 	}
@@ -167,54 +164,49 @@ func (t *Table) loadOrInitStats() error {
 	if err := json.Unmarshal(data, &stats); err != nil {
 		t.InitStats(0)
 	} else {
-		t.rows.Store(stats.Rows)
-		t.rowSize.Store(stats.RowSize)
-		t.stats = &stats
+		t.RowCount.Store(stats.Rows)
+		t.RowSize.Store(stats.RowSize)
+		t.Stats = &stats
 	}
 
 	return nil
 }
 
 func (t *Table) SetRows(rows uint64) {
-	t.rows.Store(rows)
+	t.RowCount.Store(rows)
 }
 
 func (t *Table) GetNextID() uint64 {
-	return t.rows.Load() + 1
+	return t.RowCount.Load() + 1
 }
 
 func (t *Table) GetRowSize() uint64 {
-	return t.rowSize.Load()
+	return t.RowSize.Load()
 }
 
-func (t *Table) MakeEntity(id uint64) *entity.Entity {
+func (t *Table) NewEntity(id uint64) *entity.Entity {
 	ent, err := entity.NewEntity(&entity.EntityConfig{
-		Schema: t.dataSchema,
-		RW:     buffer.NewReadWriter(t.dataBuf),
+		Schema: t.SchemaData,
+		RW:     buffer.NewReadWriter(t.BufData),
 	})
 	if err != nil {
-		t.logger.Fatal(err)
+		t.Logger.Fatal(err)
 	}
-
 	ent.SetValue("id", id)
 	ent.RW.Seek(ent.Schema.Size() * int(id))
-
 	return ent
 }
 
-func (t *Table) MakeMeta(id uint64) *entity.Entity {
+func (t *Table) NewMetaEntity(id uint64) *entity.Entity {
 	meta, err := entity.NewEntity(&entity.EntityConfig{
-		Schema: t.metaSchema,
-		RW:     buffer.NewReadWriter(t.metaDataBuf),
+		Schema: t.SchemaMeta,
+		RW:     buffer.NewReadWriter(t.BufMeta),
 	})
-
 	if err != nil {
-		t.logger.Fatal(err)
+		t.Logger.Fatal(err)
 	}
-
 	meta.SetValue("id", id)
 	meta.RW.Seek(meta.Schema.Size() * int(id))
-
 	return meta
 }
 
@@ -222,23 +214,23 @@ func (t *Table) NewRow() *record.Row {
 	id := t.GetNextID()
 	return &record.Row{
 		ID:   id,
-		Data: t.MakeEntity(id),
-		Meta: t.MakeMeta(id),
+		Data: t.NewEntity(id),
+		Meta: t.NewMetaEntity(id),
 	}
 }
 
-func (t *Table) MakeRow(id uint64) *record.Row {
+func (t *Table) LoadRow(id uint64) *record.Row {
 	return &record.Row{
 		ID:   id,
-		Data: t.MakeEntity(id),
-		Meta: t.MakeMeta(id),
+		Data: t.NewEntity(id),
+		Meta: t.NewMetaEntity(id),
 	}
 }
 
-func (t *Table) InsertLock() {
-	t.insertLock.Lock()
+func (t *Table) LockInsert() {
+	t.insertMutex.Lock()
 }
 
-func (t *Table) InsertUnlock() {
-	t.insertLock.Unlock()
+func (t *Table) UnlockInsert() {
+	t.insertMutex.Unlock()
 }

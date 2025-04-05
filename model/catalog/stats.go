@@ -14,22 +14,22 @@ type TableStats struct {
 }
 
 func (t *Table) SaveStats() error {
-	stats := t.stats
+	stats := t.Stats
 
 	if stats == nil {
 		stats = &TableStats{CreatedAt: time.Now()}
-		t.stats = stats
+		t.Stats = stats
 	}
 
 	stats.UpdatedAt = time.Now()
-	stats.Rows = t.rows.Load()
-	stats.RowSize = t.rowSize.Load()
+	stats.Rows = t.RowCount.Load()
+	stats.RowSize = t.RowSize.Load()
 
 	data, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(t.StatsFile, data, 0644)
+	return os.WriteFile(t.PathStats, data, 0644)
 }
 
 func (t *Table) InitStats(rowSize uint64) error {
@@ -37,8 +37,8 @@ func (t *Table) InitStats(rowSize uint64) error {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	stats.Rows = t.rows.Load()
+	stats.Rows = t.RowCount.Load()
 	stats.RowSize = rowSize
-	t.stats = stats
+	t.Stats = stats
 	return t.SaveStats()
 }

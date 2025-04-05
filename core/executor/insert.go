@@ -8,8 +8,8 @@ import (
 )
 
 func Insert(table *catalog.Table, e ...*record.Row) error {
-	table.InsertLock()
-	defer table.InsertUnlock()
+	table.LockInsert()
+	defer table.UnlockInsert()
 
 	now := time.Now()
 	id := table.GetNextID()
