@@ -11,6 +11,7 @@ import (
 
 	"github.com/onnasoft/ZenithSQL/core/buffer"
 	"github.com/onnasoft/ZenithSQL/model/entity"
+	"github.com/onnasoft/ZenithSQL/model/record"
 	"github.com/sirupsen/logrus"
 )
 
@@ -186,7 +187,7 @@ func (t *Table) GetRowSize() uint64 {
 	return t.rowSize.Load()
 }
 
-func (t *Table) MakeEntity() *entity.Entity {
+func (t *Table) MakeEntity(id uint64) *entity.Entity {
 	ent, err := entity.NewEntity(&entity.EntityConfig{
 		Schema: t.dataSchema,
 		RW:     buffer.NewReadWriter(t.dataBuf),
@@ -194,6 +195,10 @@ func (t *Table) MakeEntity() *entity.Entity {
 	if err != nil {
 		t.logger.Fatal(err)
 	}
+
+	ent.SetValue("id", id)
+	ent.RW.Seek(ent.Schema.Size() * int(id))
+
 	return ent
 }
 
@@ -202,10 +207,32 @@ func (t *Table) MakeMeta(id uint64) *entity.Entity {
 		Schema: t.metaSchema,
 		RW:     buffer.NewReadWriter(t.metaDataBuf),
 	})
+
 	if err != nil {
 		t.logger.Fatal(err)
 	}
+
+	meta.SetValue("id", id)
+	meta.RW.Seek(meta.Schema.Size() * int(id))
+
 	return meta
+}
+
+func (t *Table) NewRow() *record.Row {
+	id := t.GetNextID()
+	return &record.Row{
+		ID:   id,
+		Data: t.MakeEntity(id),
+		Meta: t.MakeMeta(id),
+	}
+}
+
+func (t *Table) MakeRow(id uint64) *record.Row {
+	return &record.Row{
+		ID:   id,
+		Data: t.MakeEntity(id),
+		Meta: t.MakeMeta(id),
+	}
 }
 
 func (t *Table) InsertLock() {

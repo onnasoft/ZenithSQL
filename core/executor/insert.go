@@ -1,42 +1,39 @@
 package executor
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/entity"
+	"github.com/onnasoft/ZenithSQL/model/record"
 )
 
-func Insert(table *catalog.Table, e ...*entity.Entity) error {
+func Insert(table *catalog.Table, e ...*record.Row) error {
 	table.InsertLock()
 	defer table.InsertUnlock()
 
+	now := time.Now()
 	id := table.GetNextID()
-	for _, entity := range e {
-
-		now := time.Now()
-		metaData := table.MakeMeta(id)
-		metaData.SetValue("id", id)
-		metaData.SetValue("created_at", now)
-		metaData.SetValue("updated_at", now)
-
-		offset := metaData.Schema.Size() * int(id)
-		metaData.RW.Seek(offset)
-
-		if err := metaData.Save(); err != nil {
+	for _, row := range e {
+		if err := row.SetID(id); err != nil {
 			return err
 		}
 
-		offset = entity.Schema.Size() * int(id)
-		entity.RW.Seek(offset)
-		if err := entity.Save(); err != nil {
+		if err := row.Meta.SetValue("created_at", now); err != nil {
+			return err
+		}
+
+		if err := row.Meta.SetValue("updated_at", now); err != nil {
+			return err
+		}
+
+		if err := row.Meta.Save(); err != nil {
+			return err
+		}
+
+		if err := row.Data.Save(); err != nil {
 			return err
 		}
 		id++
-
-		fmt.Println("Insert ID:", id)
-		fmt.Println("Insert Entity:", entity)
 	}
 
 	table.SetRows(id)

@@ -145,7 +145,6 @@ var parseTypes = map[DataType]func([]byte) interface{}{
 		return uint32(binary.LittleEndian.Uint32(b))
 	},
 	Uint64Type: func(b []byte) interface{} {
-		fmt.Println("Uint64Type Data:", b)
 		return uint64(binary.LittleEndian.Uint64(b))
 	},
 	Float32Type: func(b []byte) interface{} {
@@ -164,8 +163,32 @@ var parseTypes = map[DataType]func([]byte) interface{}{
 
 func isValidType(dt DataType, val interface{}) bool {
 	switch dt {
+	case Int8Type:
+		_, ok := val.(int8)
+		return ok
+	case Int16Type:
+		_, ok := val.(int16)
+		return ok
+	case Int32Type:
+		_, ok := val.(int32)
+		return ok
 	case Int64Type:
 		_, ok := val.(int64)
+		return ok
+	case Uint8Type:
+		_, ok := val.(uint8)
+		return ok
+	case Uint16Type:
+		_, ok := val.(uint16)
+		return ok
+	case Uint32Type:
+		_, ok := val.(uint32)
+		return ok
+	case Uint64Type:
+		_, ok := val.(uint64)
+		return ok
+	case Float32Type:
+		_, ok := val.(float32)
 		return ok
 	case Float64Type:
 		_, ok := val.(float64)
@@ -189,10 +212,9 @@ func isValidType(dt DataType, val interface{}) bool {
 		return false
 	}
 }
+
 func decodeField(field *Field, data []byte) (interface{}, error) {
-	fmt.Println("decodeField Data:", data)
 	if parser, ok := parseTypes[field.Type]; ok {
-		fmt.Println("decodeField Parser exists for type:", field.Type)
 		return parser(data), nil
 	}
 	return nil, fmt.Errorf("unsupported field type: %s", field.Type)

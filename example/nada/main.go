@@ -43,13 +43,16 @@ func main() {
 	fmt.Println("Schema Size:", sc.Size())
 
 	fmt.Println()
-	fmt.Println("Make Meta")
-	record := table.MakeEntity()
-	record.SetValue("city", "New York")
-	record.SetValue("temperature", 25.5)
+	record := table.NewRow()
+	if err := record.Data.SetValue("city", "New York"); err != nil {
+		log.Fatalf("error setting value %v", err)
+	}
+	if err := record.Data.SetValue("temperature", 25.5); err != nil {
+		log.Fatalf("error setting value %v", err)
+	}
 
-	fmt.Println("Temperature", record.GetValue("temperature"))
 	fmt.Println()
-	fmt.Println("Record", record.String())
 	executor.Insert(table, record)
+
+	fmt.Println("Record", record)
 }
