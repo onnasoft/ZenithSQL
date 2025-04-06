@@ -1,11 +1,10 @@
 package entity
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
@@ -22,7 +21,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Int16")
 		}
-		binary.LittleEndian.PutUint16(buffer, uint16(v))
+		*(*int16)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	Int32Type: func(buffer []byte, value interface{}) error {
@@ -30,7 +29,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Int32")
 		}
-		binary.LittleEndian.PutUint32(buffer, uint32(v))
+		*(*int32)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	Int64Type: func(buffer []byte, value interface{}) error {
@@ -38,7 +37,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Int64")
 		}
-		binary.LittleEndian.PutUint64(buffer, uint64(v))
+		*(*int64)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	Uint8Type: func(buffer []byte, value interface{}) error {
@@ -54,7 +53,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Uint16")
 		}
-		binary.LittleEndian.PutUint16(buffer, v)
+		*(*uint16)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	Uint32Type: func(buffer []byte, value interface{}) error {
@@ -62,7 +61,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Uint32")
 		}
-		binary.LittleEndian.PutUint32(buffer, v)
+		*(*uint32)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	Uint64Type: func(buffer []byte, value interface{}) error {
@@ -70,7 +69,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Uint64")
 		}
-		binary.LittleEndian.PutUint64(buffer, v)
+		*(*uint64)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	Float32Type: func(buffer []byte, value interface{}) error {
@@ -78,7 +77,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Float32")
 		}
-		binary.LittleEndian.PutUint32(buffer, math.Float32bits(v))
+		*(*float32)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	Float64Type: func(buffer []byte, value interface{}) error {
@@ -86,7 +85,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Float64")
 		}
-		binary.LittleEndian.PutUint64(buffer, math.Float64bits(v))
+		*(*float64)(unsafe.Pointer(&buffer[0])) = v
 		return nil
 	},
 	StringType: func(buffer []byte, value interface{}) error {
@@ -105,7 +104,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Timestamp")
 		}
-		binary.LittleEndian.PutUint64(buffer, uint64(v.UnixNano()))
+		*(*int64)(unsafe.Pointer(&buffer[0])) = v.UnixNano()
 		return nil
 	},
 	BoolType: func(buffer []byte, value interface{}) error {
@@ -127,37 +126,37 @@ var parseTypes = map[DataType]func([]byte) interface{}{
 		return int8(b[0])
 	},
 	Int16Type: func(b []byte) interface{} {
-		return int16(binary.LittleEndian.Uint16(b))
+		return *(*int16)(unsafe.Pointer(&b[0]))
 	},
 	Int32Type: func(b []byte) interface{} {
-		return int32(binary.LittleEndian.Uint32(b))
+		return *(*int32)(unsafe.Pointer(&b[0]))
 	},
 	Int64Type: func(b []byte) interface{} {
-		return int64(binary.LittleEndian.Uint64(b))
+		return *(*int64)(unsafe.Pointer(&b[0]))
 	},
 	Uint8Type: func(b []byte) interface{} {
 		return uint8(b[0])
 	},
 	Uint16Type: func(b []byte) interface{} {
-		return uint16(binary.LittleEndian.Uint16(b))
+		return *(*uint16)(unsafe.Pointer(&b[0]))
 	},
 	Uint32Type: func(b []byte) interface{} {
-		return uint32(binary.LittleEndian.Uint32(b))
+		return *(*uint32)(unsafe.Pointer(&b[0]))
 	},
 	Uint64Type: func(b []byte) interface{} {
-		return uint64(binary.LittleEndian.Uint64(b))
+		return *(*uint64)(unsafe.Pointer(&b[0]))
 	},
 	Float32Type: func(b []byte) interface{} {
-		return math.Float32frombits(binary.LittleEndian.Uint32(b))
+		return *(*float32)(unsafe.Pointer(&b[0]))
 	},
 	Float64Type: func(b []byte) interface{} {
-		return math.Float64frombits(binary.LittleEndian.Uint64(b))
+		return *(*float64)(unsafe.Pointer(&b[0]))
 	},
 	StringType: func(b []byte) interface{} {
 		return strings.TrimRight(string(b), "\x00")
 	},
 	TimestampType: func(b []byte) interface{} {
-		return time.Unix(0, int64(binary.LittleEndian.Uint64(b)))
+		return time.Unix(0, *(*int64)(unsafe.Pointer(&b[0])))
 	},
 }
 
@@ -200,9 +199,6 @@ func isValidType(dt DataType, val interface{}) bool {
 		_, ok := val.(bool)
 		return ok
 	case TimestampType:
-		if val == nil {
-			return true
-		}
 		_, ok := val.(time.Time)
 		if !ok {
 			_, ok = val.(int64)

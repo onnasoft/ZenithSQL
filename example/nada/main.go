@@ -38,21 +38,46 @@ func main() {
 		fmt.Printf("Field: %s, Type: %s, Length: %d\n", field.Name, field.Type.String(), field.Length)
 	}
 
-	fmt.Println("Schema Size:", sc.CalculateSize())
 	fmt.Println("Schema Length:", sc.Len())
 	fmt.Println("Schema Size:", sc.Size())
 
 	fmt.Println()
-	record := table.NewRow()
-	if err := record.Data.SetValue("city", "New York"); err != nil {
-		log.Fatalf("error setting value %v", err)
+	values := []interface{}{
+		map[string]interface{}{
+			"city":        "New York",
+			"temperature": 25.5,
+		},
+		map[string]interface{}{
+			"city":        "Los Angeles",
+			"temperature": 30.0,
+		},
+		map[string]interface{}{
+			"city":        "Chicago",
+			"temperature": 20.0,
+		},
 	}
-	if err := record.Data.SetValue("temperature", 25.5); err != nil {
-		log.Fatalf("error setting value %v", err)
+	for _, v := range values {
+		record := table.NewRow()
+		if err := record.Data.SetValue("city", v.(map[string]interface{})["city"]); err != nil {
+			log.Fatalf("error setting value %v", err)
+		}
+		if err := record.Data.SetValue("temperature", v.(map[string]interface{})["temperature"]); err != nil {
+			log.Fatalf("error setting value %v", err)
+		}
+		if err := executor.Insert(table, record); err != nil {
+			log.Fatalf("error inserting record %v", err)
+		}
 	}
+	fmt.Println("Inserted records:")
 
-	fmt.Println()
-	executor.Insert(table, record)
-
-	fmt.Println("Record", record)
+	for i := 0; i < len(values); i++ {
+		row := table.LoadRow(uint64(i + 1))
+		if row == nil {
+			log.Fatalf("error getting record %v", i+1)
+		}
+		row.Data.Reset()
+		fmt.Printf("Row ID: %d, City: %s, Temperature: %f\n", row.GetID(), row.Data.GetValue("city"), row.Data.GetValue("temperature"))
+	}
+	fmt.Println("Total Rows:", table.Stats.GetValue("rows"))
+	fmt.Println("Row Size:", table.Stats.GetValue("row_size"))
 }

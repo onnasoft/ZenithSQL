@@ -22,7 +22,6 @@ func (rw *MReadWriter) Write(p []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	rw.offset += len(p)
 	return len(p), nil
 }
 
@@ -35,7 +34,6 @@ func (rw *MReadWriter) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	copy(p, data)
-	rw.offset += len(data)
 	return len(data), nil
 }
 
@@ -43,7 +41,7 @@ func (rw *MReadWriter) ReadAt(p []byte, offset int) (int, error) {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
 
-	data, err := rw.buf.Read(offset, len(p))
+	data, err := rw.buf.Read(rw.offset+offset, len(p))
 	if err != nil {
 		return 0, err
 	}

@@ -15,11 +15,12 @@ func (dt DataType) IsNumeric() bool {
 }
 
 type Schema struct {
-	Fields    []*Field
-	nameIndex map[string]int
-	mu        sync.RWMutex
-	size      int
-	lock      bool
+	Fields          []*Field
+	IsSettedFlagPos int
+	nameIndex       map[string]int
+	mu              sync.RWMutex
+	size            int
+	lock            bool
 }
 
 func NewSchema() *Schema {

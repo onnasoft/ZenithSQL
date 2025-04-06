@@ -2,27 +2,25 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/entity"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 )
 
 const (
-	numWorkers = 16 // Número máximo de workers simultáneos
-	steps      = 32
+	numWorkers = 64
 )
 
 var log = logrus.New()
 
 func main() {
-	db, err := catalog.OpenDatabase("testdb", "./data")
+	db, err := catalog.OpenDatabase(&catalog.DatabaseConfig{
+		Name:   "testdb",
+		Path:   "./data",
+		Logger: logrus.New(),
+	})
 	if err != nil {
 		log.Fatalf("error getting database %v, %v", "testdb", err)
 	}
@@ -37,91 +35,74 @@ func main() {
 		log.Fatalf("error getting table %v, %v", "temperatures", err)
 	}
 
+	startTime := time.Now()
+	log.Infof("Processing table %s", table.Name)
 	processData(table)
+
+	log.Infof("Finished processing table %s in %v", table.Name, time.Since(startTime))
+
 }
 
 func processData(table *catalog.Table) {
-	startTime := time.Now()
+	totalRows := table.Stats.GetValue("rows").(uint64)
+	chunkSize := totalRows / numWorkers
 
-	filePath := filepath.Join(table.Path, "data.bin")
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		log.Fatalf("error getting file info: %v", err)
-	}
-	fileSize := info.Size()
-
-	data, err := unix.Mmap(int(file.Fd()), 0, int(fileSize), unix.PROT_READ, unix.MAP_SHARED)
-	if err != nil {
-		log.Fatalf("error mmap file: %v", err)
-	}
-	defer unix.Munmap(data)
-
-	stepSize := int(table.Length() / int64(steps) * int64(table.EffectiveSize()))
-	if stepSize == 0 {
-		stepSize = int(table.EffectiveSize()) // Evita dividir por 0
-	}
-
-	var totalSum float64
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, numWorkers)
-	pool := sync.Pool{
-		New: func() interface{} {
-			record, _ := entity.NewEntity(table.Schema)
-			return record
-		},
-	}
+	results := make(chan float64, numWorkers)
+	fmt.Println("Total rows:", totalRows)
 
-	startOffset := 0
-	for endOffset := stepSize; startOffset < int(fileSize); endOffset += stepSize {
-		if endOffset > int(fileSize) {
-			endOffset = int(fileSize)
+	for i := uint64(0); i < numWorkers; i++ {
+		startRow := i * chunkSize
+		endRow := startRow + chunkSize
+		if endRow > totalRows {
+			endRow = totalRows
+		}
+		start := startRow + 1
+		end := endRow
+		if start >= totalRows {
+			break
+		}
+		if end > totalRows {
+			end = totalRows
 		}
 
-		sem <- struct{}{}
 		wg.Add(1)
-
-		go func(start, end int) {
+		go func(start, end uint64) {
+			log.Infof("Processing rows %d to %d", start, end)
 			defer wg.Done()
-			defer func() { <-sem }()
-
-			record := pool.Get().(*entity.Entity)
-			sum := runWorker(record, data[start:end], table.EffectiveSize())
-			totalSum += sum
-			pool.Put(record)
-		}(startOffset, endOffset)
-
-		startOffset = endOffset
+			results <- sumTemperatures(table, start, end)
+		}(start, end)
 	}
 
 	wg.Wait()
-	fmt.Printf("\nTotal sum of temperatures: %.2f\n", totalSum)
-	fmt.Printf("Elapsed: %s\n", time.Since(startTime))
+	close(results)
+
+	var total float64
+	for r := range results {
+		total += r
+	}
+
+	fmt.Printf("Total sum of temperatures: %.2f\n", total)
 }
 
-func runWorker(record *entity.Entity, buffer []byte, rowSize int) float64 {
+func sumTemperatures(table *catalog.Table, start, end uint64) float64 {
 	var sum float64
-	field, _ := record.Schema.GetByName("temperature")
-	tempOffset := field.StartPosition
-	endPos := field.EndPosition
+	row := table.NewEntityWithNoCache()
+	offset := table.SchemaData.Size() * int(start)
 
-	// Comprobación de seguridad básica
-	if endPos <= tempOffset || (endPos-tempOffset) != 8 {
-		return 0
-	}
-
-	for i := 0; i <= len(buffer)-rowSize; i += rowSize {
-		if i+tempOffset+8 > len(buffer) {
+	for i := start; i <= end; i++ {
+		row.RW().Seek(offset)
+		if row == nil {
 			break
 		}
-		// Conversión directa sin copia
-		sum += *(*float64)(unsafe.Pointer(&buffer[i+tempOffset]))
-	}
+		temp := row.GetValue("temperature")
+		if temp != nil {
+			if t, ok := temp.(float64); ok {
+				sum += t
+			}
+		}
 
+		offset += table.SchemaData.Size()
+	}
 	return sum
 }

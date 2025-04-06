@@ -1,13 +1,13 @@
 package catalog
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/buffer"
 	"github.com/onnasoft/ZenithSQL/model/entity"
@@ -21,7 +21,7 @@ const (
 	FileDataBin    = "data.bin"
 	FileMetaBin    = "meta.bin"
 	FileIndex      = "index.idx"
-	FileStats      = "stats.json"
+	FileStats      = "stats.bin"
 	FileLog        = "wal.log"
 )
 
@@ -37,16 +37,18 @@ type Table struct {
 	PathLog        string
 	SchemaData     *entity.Schema
 	SchemaMeta     *entity.Schema
+	StatsSchema    *entity.Schema
 	BufData        *buffer.Buffer
 	BufMeta        *buffer.Buffer
 	BufIndex       *buffer.Buffer
 	BufStats       *buffer.Buffer
 	BufLog         *buffer.Buffer
 	Logger         *logrus.Logger
-	Stats          *TableStats
+	Stats          entity.Entity
 	RowCount       atomic.Uint64
-	RowSize        atomic.Uint64
+	RowSize        atomic.Int32
 	insertMutex    sync.Mutex
+	importMutex    sync.Mutex
 }
 
 type TableConfig struct {
@@ -110,6 +112,7 @@ func OpenTable(cfg *TableConfig) (*Table, error) {
 		PathLog:        filepath.Join(base, FileLog),
 		SchemaMeta:     metaSchema,
 		SchemaData:     cfg.Schema,
+		StatsSchema:    initStatsSchema(),
 		Logger:         cfg.Logger,
 	}
 
@@ -140,7 +143,8 @@ func (t *Table) initBuffers() error {
 	if t.BufIndex, err = buffer.NewBuffer(t.PathIndex); err != nil {
 		return fmt.Errorf("failed to open index buffer: %w", err)
 	}
-	if t.BufStats, err = buffer.NewBuffer(t.PathStats); err != nil {
+	size := int64(t.SchemaData.Size())
+	if t.BufStats, err = buffer.NewBufferWithSize(t.PathStats, size); err != nil {
 		return fmt.Errorf("failed to open stats buffer: %w", err)
 	}
 	if t.BufLog, err = buffer.NewBuffer(t.PathLog); err != nil {
@@ -155,19 +159,51 @@ func (t *Table) initBuffers() error {
 }
 
 func (t *Table) loadOrInitStats() error {
-	data, err := os.ReadFile(t.PathStats)
+	stats, err := entity.NewEntity(&entity.EntityConfig{
+		Schema: t.StatsSchema,
+		RW:     buffer.NewReadWriter(t.BufStats),
+		Cache:  true,
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create stats entity: %w", err)
+	}
+	t.Stats = stats
+
+	if !stats.IsSetted() {
+		t.RowCount.Store(0)
+		t.RowSize.Store(int32(t.SchemaData.Size()))
+		if err := stats.SetValue("created_at", time.Now()); err != nil {
+			return fmt.Errorf("failed to set created_at: %w", err)
+		}
+
+		if err := stats.Save(); err != nil {
+			return fmt.Errorf("failed to save stats: %w", err)
+		}
+	} else {
+		t.RowCount.Store(stats.GetValue("rows").(uint64))
+		t.RowSize.Store(stats.GetValue("row_size").(int32))
 	}
 
-	var stats TableStats
-	if err := json.Unmarshal(data, &stats); err != nil {
-		t.InitStats(0)
-	} else {
-		t.RowCount.Store(stats.Rows)
-		t.RowSize.Store(stats.RowSize)
-		t.Stats = &stats
+	return nil
+}
+
+func (t *Table) SaveStats() error {
+	if t.Stats == nil {
+		return fmt.Errorf("stats entity is nil")
 	}
+
+	t.Stats.SetValue("rows", t.RowCount.Load())
+	t.Stats.SetValue("row_size", t.RowSize.Load())
+	t.Stats.SetValue("updated_at", time.Now())
+
+	if err := t.Stats.Save(); err != nil {
+		return fmt.Errorf("failed to save stats: %w", err)
+	}
+	if err := t.BufStats.Sync(); err != nil {
+		return fmt.Errorf("failed to sync stats buffer: %w", err)
+	}
+
+	fmt.Println("Stats saved successfully")
 
 	return nil
 }
@@ -176,55 +212,65 @@ func (t *Table) SetRows(rows uint64) {
 	t.RowCount.Store(rows)
 }
 
-func (t *Table) GetNextID() uint64 {
-	return t.RowCount.Load() + 1
+func (t *Table) GetRows() uint64 {
+	return t.RowCount.Load()
 }
 
-func (t *Table) GetRowSize() uint64 {
+func (t *Table) GetRowSize() int32 {
 	return t.RowSize.Load()
 }
 
-func (t *Table) NewEntity(id uint64) *entity.Entity {
+func (t *Table) GetNextID() uint64 {
+	return t.RowCount.Add(1)
+}
+
+func (t *Table) NewEntity() entity.Entity {
 	ent, err := entity.NewEntity(&entity.EntityConfig{
 		Schema: t.SchemaData,
 		RW:     buffer.NewReadWriter(t.BufData),
+		Cache:  true,
 	})
 	if err != nil {
 		t.Logger.Fatal(err)
 	}
-	ent.SetValue("id", id)
-	ent.RW.Seek(ent.Schema.Size() * int(id))
 	return ent
 }
 
-func (t *Table) NewMetaEntity(id uint64) *entity.Entity {
-	meta, err := entity.NewEntity(&entity.EntityConfig{
-		Schema: t.SchemaMeta,
-		RW:     buffer.NewReadWriter(t.BufMeta),
+func (t *Table) NewEntityWithNoCache() entity.Entity {
+	ent, err := entity.NewEntity(&entity.EntityConfig{
+		Schema: t.SchemaData,
+		RW:     buffer.NewReadWriter(t.BufData),
+		Cache:  false,
 	})
 	if err != nil {
 		t.Logger.Fatal(err)
 	}
-	meta.SetValue("id", id)
-	meta.RW.Seek(meta.Schema.Size() * int(id))
+	return ent
+}
+
+func (t *Table) NewMetaEntity() entity.Entity {
+	meta, err := entity.NewEntity(&entity.EntityConfig{
+		Schema: t.SchemaMeta,
+		RW:     buffer.NewReadWriter(t.BufMeta),
+		Cache:  true,
+	})
+	if err != nil {
+		t.Logger.Fatal(err)
+	}
 	return meta
 }
 
 func (t *Table) NewRow() *record.Row {
-	id := t.GetNextID()
-	return &record.Row{
-		ID:   id,
-		Data: t.NewEntity(id),
-		Meta: t.NewMetaEntity(id),
-	}
+	return record.NewRow(t.NewEntity(), t.NewMetaEntity())
 }
 
 func (t *Table) LoadRow(id uint64) *record.Row {
-	return &record.Row{
-		ID:   id,
-		Data: t.NewEntity(id),
-		Meta: t.NewMetaEntity(id),
+	row := record.NewRow(t.NewEntity(), t.NewMetaEntity())
+	if err := row.SetID(id); err != nil {
+		t.Logger.Fatal(err)
 	}
+
+	return row
 }
 
 func (t *Table) LockInsert() {
@@ -233,4 +279,26 @@ func (t *Table) LockInsert() {
 
 func (t *Table) UnlockInsert() {
 	t.insertMutex.Unlock()
+}
+
+func (t *Table) LockImport() {
+	t.importMutex.Lock()
+	t.insertMutex.Lock()
+}
+
+func (t *Table) UnlockImport() {
+	t.importMutex.Unlock()
+	t.insertMutex.Unlock()
+}
+
+func (t *Table) GrowRows(count uint64) error {
+	if !t.SchemaData.IsLocked() {
+		return fmt.Errorf("schema is not locked")
+	}
+	rowSize := t.RowSize.Load()
+	if rowSize == 0 {
+		return fmt.Errorf("row size is not initialized")
+	}
+	bytesNeeded := int(count * uint64(rowSize))
+	return t.BufData.Grow(bytesNeeded)
 }

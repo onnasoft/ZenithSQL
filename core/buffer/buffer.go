@@ -9,22 +9,28 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const pageSize = 256 * 1024 * 1024 // 256MB
+const pageSize = 1024 * 1024 * 256 // 256MB
 
 type Buffer struct {
-	data       []byte
-	length     int
-	file       *os.File
-	mu         sync.Mutex
-	syncPeriod time.Duration
-	writeCh    chan struct{}
-	stopCh     chan struct{}
+	data         []byte
+	length       int
+	file         *os.File
+	mu           sync.Mutex
+	syncPeriod   time.Duration
+	writeCh      chan struct{}
+	stopCh       chan struct{}
+	writeMode    bool
+	writeModeMux sync.RWMutex
 }
 
-func NewBuffer(path string) (*Buffer, error) {
+func NewBufferWithSize(path string, size int64) (*Buffer, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	if size == 0 {
+		size = pageSize
 	}
 
 	stats, err := f.Stat()
@@ -32,13 +38,18 @@ func NewBuffer(path string) (*Buffer, error) {
 		f.Close()
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
-	size := stats.Size()
-	if size == 0 {
-		size = pageSize
+	fileSize := stats.Size()
+
+	if fileSize != size {
 		if err := f.Truncate(size); err != nil {
 			f.Close()
-			return nil, fmt.Errorf("failed to truncate empty file: %w", err)
+			return nil, fmt.Errorf("failed to truncate file: %w", err)
 		}
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to sync file: %w", err)
 	}
 
 	data, err := unix.Mmap(int(f.Fd()), 0, int(size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
@@ -58,6 +69,41 @@ func NewBuffer(path string) (*Buffer, error) {
 
 	go b.syncLoop()
 	return b, nil
+}
+
+func NewBuffer(path string) (*Buffer, error) {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	stats, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+	size := stats.Size()
+
+	return NewBufferWithSize(path, size)
+}
+
+func (b *Buffer) EnableWriteMode() {
+	b.writeModeMux.Lock()
+	b.writeMode = true
+	b.writeModeMux.Unlock()
+}
+
+func (b *Buffer) DisableWriteMode() {
+	b.writeModeMux.Lock()
+	b.writeMode = false
+	b.writeModeMux.Unlock()
+}
+
+func (b *Buffer) isWriteMode() bool {
+	b.writeModeMux.RLock()
+	defer b.writeModeMux.RUnlock()
+	return b.writeMode
 }
 
 func (b *Buffer) syncLoop() {
@@ -88,6 +134,11 @@ func (b *Buffer) markWrite() {
 }
 
 func (b *Buffer) Write(offset int, input []byte) error {
+	if b.isWriteMode() {
+		_, err := b.file.WriteAt(input, int64(offset))
+		return err
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -123,18 +174,28 @@ func (b *Buffer) growUnlocked(extra int) error {
 		return fmt.Errorf("failed to extend file: %w", err)
 	}
 
-	newData, err := unix.Mmap(int(b.file.Fd()), 0, newLen, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
-	if err != nil {
-		return fmt.Errorf("failed to remap file: %w", err)
+	if err := unix.Msync(b.data, unix.MS_SYNC); err != nil {
+		return fmt.Errorf("failed to sync before unmap: %w", err)
 	}
 
 	if err := unix.Munmap(b.data); err != nil {
 		return fmt.Errorf("failed to unmap old data: %w", err)
 	}
 
+	newData, err := unix.Mmap(int(b.file.Fd()), 0, newLen, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
+	if err != nil {
+		return fmt.Errorf("failed to remap file: %w", err)
+	}
+
 	b.data = newData
 	b.length = newLen
 	return nil
+}
+
+func (b *Buffer) Grow(extra int) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.growUnlocked(extra)
 }
 
 func (b *Buffer) Sync() error {

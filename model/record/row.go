@@ -8,13 +8,12 @@ import (
 
 type Row struct {
 	ID   uint64
-	Data *entity.Entity
-	Meta *entity.Entity
+	Data entity.Entity
+	Meta entity.Entity
 }
 
-func NewRow(id uint64, data, meta *entity.Entity) *Row {
+func NewRow(data, meta entity.Entity) *Row {
 	return &Row{
-		ID:   id,
 		Data: data,
 		Meta: meta,
 	}
@@ -29,9 +28,27 @@ func (row *Row) SetID(id uint64) error {
 	if err != nil {
 		return err
 	}
+
+	index := id - 1
 	row.ID = id
-	row.Data.RW.Seek(row.Data.Schema.Size() * int(id))
-	row.Meta.RW.Seek(row.Meta.Schema.Size() * int(id))
+	row.Data.RW().Seek(row.Data.Schema().Size() * int(index))
+	row.Meta.RW().Seek(row.Meta.Schema().Size() * int(index))
+
+	return nil
+}
+
+func (row *Row) MoveTo(id uint64) error {
+	err := row.Meta.SetValue("id", id)
+	if err != nil {
+		return err
+	}
+
+	row.ID = id
+
+	row.Data.Reset()
+	row.Meta.Reset()
+	row.Data.RW().Seek(row.Data.Schema().Size() * int(id))
+	row.Meta.RW().Seek(row.Meta.Schema().Size() * int(id))
 
 	return nil
 }
