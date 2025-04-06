@@ -8,11 +8,11 @@ import (
 
 type Row struct {
 	ID   uint64
-	Data entity.Entity
-	Meta entity.Entity
+	Data *entity.Entity
+	Meta *entity.Entity
 }
 
-func NewRow(data, meta entity.Entity) *Row {
+func NewRow(data, meta *entity.Entity) *Row {
 	return &Row{
 		Data: data,
 		Meta: meta,

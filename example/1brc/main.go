@@ -1,108 +1,103 @@
 package main
 
 import (
-	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/model/catalog"
+	"github.com/onnasoft/ZenithSQL/model/entity"
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	numWorkers = 64
+var (
+	log       = logrus.New()
+	batchSize = uint64(1000)
 )
 
-var log = logrus.New()
-
 func main() {
+	startTime := time.Now()
+
 	db, err := catalog.OpenDatabase(&catalog.DatabaseConfig{
 		Name:   "testdb",
 		Path:   "./data",
-		Logger: logrus.New(),
+		Logger: log,
 	})
 	if err != nil {
-		log.Fatalf("error getting database %v, %v", "testdb", err)
+		log.Fatalf("error opening database: %v", err)
 	}
 
 	schema, err := db.GetSchema("public")
 	if err != nil {
-		log.Fatalf("error getting schema %v, %v", "public", err)
+		log.Fatalf("error getting schema: %v", err)
 	}
 
 	table, err := schema.GetTable("temperatures")
 	if err != nil {
-		log.Fatalf("error getting table %v, %v", "temperatures", err)
+		log.Fatalf("error getting table: %v", err)
 	}
 
-	startTime := time.Now()
 	log.Infof("Processing table %s", table.Name)
-	processData(table)
+	totalSum := processDataOptimized(table)
 
-	log.Infof("Finished processing table %s in %v", table.Name, time.Since(startTime))
-
+	log.Infof("Finished processing. Total sum: %.2f, Time taken: %v",
+		totalSum, time.Since(startTime))
 }
 
-func processData(table *catalog.Table) {
+func processDataOptimized(table *catalog.Table) float64 {
+	numWorkers := runtime.NumCPU()
 	totalRows := table.Stats.GetValue("rows").(uint64)
-	chunkSize := totalRows / numWorkers
+
+	jobs := make(chan [2]uint64, numWorkers)
+	results := make(chan float64, numWorkers)
 
 	var wg sync.WaitGroup
-	results := make(chan float64, numWorkers)
-	fmt.Println("Total rows:", totalRows)
-
-	for i := uint64(0); i < numWorkers; i++ {
-		startRow := i * chunkSize
-		endRow := startRow + chunkSize
-		if endRow > totalRows {
-			endRow = totalRows
-		}
-		start := startRow + 1
-		end := endRow
-		if start >= totalRows {
-			break
-		}
-		if end > totalRows {
-			end = totalRows
-		}
-
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func(start, end uint64) {
-			log.Infof("Processing rows %d to %d", start, end)
-			defer wg.Done()
-			results <- sumTemperatures(table, start, end)
-		}(start, end)
+		go worker(table, jobs, results, &wg)
 	}
 
-	wg.Wait()
-	close(results)
+	go func() {
+		defer close(jobs)
+		for start := uint64(1); start <= totalRows; start += batchSize {
+			end := start + batchSize - 1
+			if end > totalRows {
+				end = totalRows
+			}
+			jobs <- [2]uint64{start, end}
+		}
+	}()
 
-	var total float64
-	for r := range results {
-		total += r
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var totalSum float64
+	for sum := range results {
+		totalSum += sum
 	}
 
-	fmt.Printf("Total sum of temperatures: %.2f\n", total)
+	return totalSum
 }
 
-func sumTemperatures(table *catalog.Table, start, end uint64) float64 {
-	var sum float64
-	row := table.NewEntityWithNoCache()
-	offset := table.SchemaData.Size() * int(start)
+func worker(table *catalog.Table, jobs <-chan [2]uint64, results chan<- float64, wg *sync.WaitGroup) {
+	defer wg.Done()
 
-	for i := start; i <= end; i++ {
-		row.RW().Seek(offset)
-		if row == nil {
-			break
-		}
-		temp := row.GetValue("temperature")
-		if temp != nil {
-			if t, ok := temp.(float64); ok {
-				sum += t
-			}
+	rowSize := table.SchemaData.Size()
+
+	temperatureField, _ := table.SchemaData.GetFieldByName("temperature")
+
+	for job := range jobs {
+		start, end := job[0], job[1]
+		var sum float64
+		offset := rowSize * int(start-1)
+
+		for i := start; i <= end; i++ {
+			sum += entity.GetFloat64ValueAtOffset(temperatureField, table.BufData, offset)
+			offset += rowSize
 		}
 
-		offset += table.SchemaData.Size()
+		results <- sum
 	}
-	return sum
 }

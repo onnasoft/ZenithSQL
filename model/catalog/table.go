@@ -44,7 +44,7 @@ type Table struct {
 	BufStats       *buffer.Buffer
 	BufLog         *buffer.Buffer
 	Logger         *logrus.Logger
-	Stats          entity.Entity
+	Stats          *entity.Entity
 	RowCount       atomic.Uint64
 	RowSize        atomic.Int32
 	insertMutex    sync.Mutex
@@ -162,7 +162,6 @@ func (t *Table) loadOrInitStats() error {
 	stats, err := entity.NewEntity(&entity.EntityConfig{
 		Schema: t.StatsSchema,
 		RW:     buffer.NewReadWriter(t.BufStats),
-		Cache:  true,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create stats entity: %w", err)
@@ -224,11 +223,10 @@ func (t *Table) GetNextID() uint64 {
 	return t.RowCount.Add(1)
 }
 
-func (t *Table) NewEntity() entity.Entity {
+func (t *Table) NewEntity() *entity.Entity {
 	ent, err := entity.NewEntity(&entity.EntityConfig{
 		Schema: t.SchemaData,
 		RW:     buffer.NewReadWriter(t.BufData),
-		Cache:  true,
 	})
 	if err != nil {
 		t.Logger.Fatal(err)
@@ -236,23 +234,10 @@ func (t *Table) NewEntity() entity.Entity {
 	return ent
 }
 
-func (t *Table) NewEntityWithNoCache() entity.Entity {
-	ent, err := entity.NewEntity(&entity.EntityConfig{
-		Schema: t.SchemaData,
-		RW:     buffer.NewReadWriter(t.BufData),
-		Cache:  false,
-	})
-	if err != nil {
-		t.Logger.Fatal(err)
-	}
-	return ent
-}
-
-func (t *Table) NewMetaEntity() entity.Entity {
+func (t *Table) NewMetaEntity() *entity.Entity {
 	meta, err := entity.NewEntity(&entity.EntityConfig{
 		Schema: t.SchemaMeta,
 		RW:     buffer.NewReadWriter(t.BufMeta),
-		Cache:  true,
 	})
 	if err != nil {
 		t.Logger.Fatal(err)

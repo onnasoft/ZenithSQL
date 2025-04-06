@@ -159,9 +159,6 @@ func (b *Buffer) Write(offset int, input []byte) error {
 }
 
 func (b *Buffer) Read(offset, size int) ([]byte, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	if offset+size > b.length {
 		return nil, fmt.Errorf("read exceeds buffer size")
 	}

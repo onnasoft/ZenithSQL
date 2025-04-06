@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/onnasoft/ZenithSQL/core/buffer"
 )
 
 var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
@@ -13,7 +15,7 @@ var writerTypes = map[DataType]func(buffer []byte, val interface{}) error{
 		if !ok && value != nil {
 			return fmt.Errorf("type assertion failed for Int8")
 		}
-		buffer[0] = uint8(v)
+		buffer[0] = byte(v)
 		return nil
 	},
 	Int16Type: func(buffer []byte, value interface{}) error {
@@ -159,54 +161,72 @@ var parseTypes = map[DataType]func([]byte) interface{}{
 		return time.Unix(0, *(*int64)(unsafe.Pointer(&b[0])))
 	},
 }
-
-func isValidType(dt DataType, val interface{}) bool {
-	switch dt {
-	case Int8Type:
+var typeValidators = map[DataType]func(interface{}) bool{
+	Int8Type: func(val interface{}) bool {
 		_, ok := val.(int8)
 		return ok
-	case Int16Type:
+	},
+	Int16Type: func(val interface{}) bool {
 		_, ok := val.(int16)
 		return ok
-	case Int32Type:
+	},
+	Int32Type: func(val interface{}) bool {
 		_, ok := val.(int32)
 		return ok
-	case Int64Type:
+	},
+	Int64Type: func(val interface{}) bool {
 		_, ok := val.(int64)
 		return ok
-	case Uint8Type:
+	},
+	Uint8Type: func(val interface{}) bool {
 		_, ok := val.(uint8)
 		return ok
-	case Uint16Type:
+	},
+	Uint16Type: func(val interface{}) bool {
 		_, ok := val.(uint16)
 		return ok
-	case Uint32Type:
+	},
+	Uint32Type: func(val interface{}) bool {
 		_, ok := val.(uint32)
 		return ok
-	case Uint64Type:
+	},
+	Uint64Type: func(val interface{}) bool {
 		_, ok := val.(uint64)
 		return ok
-	case Float32Type:
+	},
+	Float32Type: func(val interface{}) bool {
 		_, ok := val.(float32)
 		return ok
-	case Float64Type:
+	},
+	Float64Type: func(val interface{}) bool {
 		_, ok := val.(float64)
 		return ok
-	case StringType:
+	},
+	StringType: func(val interface{}) bool {
 		_, ok := val.(string)
 		return ok
-	case BoolType:
+	},
+	BoolType: func(val interface{}) bool {
 		_, ok := val.(bool)
 		return ok
-	case TimestampType:
+	},
+	TimestampType: func(val interface{}) bool {
+		if val == nil {
+			return true
+		}
 		_, ok := val.(time.Time)
 		if !ok {
 			_, ok = val.(int64)
 		}
 		return ok
-	default:
-		return false
+	},
+}
+
+func isValidType(dt DataType, val interface{}) bool {
+	if validator, exists := typeValidators[dt]; exists {
+		return validator(val)
 	}
+	return false
 }
 
 func decodeField(field *Field, data []byte) (interface{}, error) {
@@ -232,4 +252,27 @@ func encodeField(field *Field, value interface{}, buffer []byte) error {
 		return writer(buffer, value)
 	}
 	return fmt.Errorf("unsupported field type: %s", field.Type)
+}
+
+func GetValue(f *Field, rw buffer.ReadWriter) interface{} {
+	isSet := make([]byte, 1)
+	rw.ReadAt(isSet, f.IsSettedFlagPos)
+	if isSet[0] == 0 {
+		return nil
+	}
+
+	data := make([]byte, f.Length)
+	rw.ReadAt(data, f.StartPosition)
+	value, _ := decodeField(f, data)
+
+	return value
+}
+
+func GetFloat64ValueAtOffset(field *Field, buff *buffer.Buffer, offset int) float64 {
+	isSet, _ := buff.Read(field.IsSettedFlagPos, 1)
+	if isSet[0] == 0 {
+		return 0
+	}
+	data, _ := buff.Read(offset+field.StartPosition, field.Length)
+	return *(*float64)(unsafe.Pointer(&data[0]))
 }

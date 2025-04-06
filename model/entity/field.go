@@ -17,19 +17,13 @@ type Field struct {
 	EndPosition     int                 `json:"end_position"`
 }
 
-func (e *Field) IsNumeric() bool {
-	return e.Type == Int64Type || e.Type == Float64Type
+func (f *Field) IsSettedFlag() bool {
+	return f.IsSettedFlagPos > 0
 }
 
-func (e *Field) IsString() bool {
-	return e.Type == StringType
-}
-func (e *Field) IsBool() bool {
-	return e.Type == BoolType
-}
-
-func (e *Field) IsDate() bool {
-	return e.Type == TimestampType
+func (f *Field) String() string {
+	return fmt.Sprintf("Field{Name: %s, Type: %s, Length: %d, Start: %d, End: %d}",
+		f.Name, f.Type.String(), f.Length, f.StartPosition, f.EndPosition)
 }
 
 func (f *Field) Prepare(offset int) {
