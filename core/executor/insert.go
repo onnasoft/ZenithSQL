@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"context"
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
@@ -18,19 +17,13 @@ func Insert(table *catalog.Table, value ...map[string]interface{}) error {
 	}
 	defer writer.Close()
 
-	if len(value) <= 100 {
-		if err := writer.Commit(); err != nil {
-			writer.Rollback()
-			return err
-		}
-	} else {
-		if err := writer.Flush(); err != nil {
-			writer.Rollback()
-			return err
-		}
+	if err := writer.Commit(); err != nil {
+		writer.Rollback()
+		return err
 	}
 
-	if err := writer.Close(); err != nil {
+	if err := table.UpdateRowCount(table.RowCount() + int64(len(value))); err != nil {
+		writer.Rollback()
 		return err
 	}
 
@@ -40,7 +33,7 @@ func Insert(table *catalog.Table, value ...map[string]interface{}) error {
 func insert(table *catalog.Table, value ...map[string]interface{}) (storage.Writer, error) {
 	now := time.Now()
 
-	writer, err := table.Writer(context.Background())
+	writer, err := table.Writer()
 	if err != nil {
 		return nil, err
 	}

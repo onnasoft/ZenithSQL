@@ -11,33 +11,39 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type ColumnStorage struct {
-	fields       []storage.FieldMeta
-	columns      map[string]*Column
-	BasePath     string
-	Logger       *logrus.Logger
-	StorageStats *storage.StorageStats
+const statsFileName = "stats.bin"
 
-	insertLock *sync.Mutex
-	importLock *sync.Mutex
+type ColumnStorage struct {
+	fields        []storage.FieldMeta
+	columns       map[string]*Column
+	BasePath      string
+	StatsFilePath string
+	Logger        *logrus.Logger
+	StorageStats  *storage.StorageStats
+
+	insertLock sync.Mutex
+	importLock sync.Mutex
 }
 
 type ColumnStorageConfig struct {
-	BasePath     string
-	Fields       []storage.FieldMeta
-	StorageStats *storage.StorageStats
-	Logger       *logrus.Logger
+	BasePath      string
+	StatsFilePath string
+	Fields        []storage.FieldMeta
+	StorageStats  *storage.StorageStats
+	Logger        *logrus.Logger
 }
 
 func NewColumnStorage(cfg *ColumnStorageConfig) *ColumnStorage {
 	store := &ColumnStorage{
-		fields:       cfg.Fields,
-		BasePath:     cfg.BasePath,
-		StorageStats: cfg.StorageStats,
-		Logger:       cfg.Logger,
+		fields:        cfg.Fields,
+		BasePath:      cfg.BasePath,
+		StatsFilePath: cfg.StatsFilePath,
+		StorageStats:  cfg.StorageStats,
+		Logger:        cfg.Logger,
+	}
 
-		insertLock: &sync.Mutex{},
-		importLock: &sync.Mutex{},
+	if cfg.StatsFilePath == "" {
+		store.StatsFilePath = cfg.BasePath + "/" + statsFileName
 	}
 
 	return store
@@ -85,51 +91,31 @@ func (s *ColumnStorage) Compact(ctx context.Context) error {
 	return nil
 }
 
-func (s *ColumnStorage) CreateField(ctx context.Context, meta storage.FieldMeta, validators ...storage.Validator) error {
+func (s *ColumnStorage) CreateField(meta storage.FieldMeta, validators ...storage.Validator) error {
 	return nil
 }
 
-func (s *ColumnStorage) DeleteField(ctx context.Context, name string) error {
+func (s *ColumnStorage) DeleteField(name string) error {
 	return nil
 }
 
-func (s *ColumnStorage) GetFieldMeta(ctx context.Context, name string) (storage.FieldMeta, error) {
+func (s *ColumnStorage) GetFieldMeta(name string) (storage.FieldMeta, error) {
 	return storage.FieldMeta{}, nil
 }
 
-func (s *ColumnStorage) ListFields(ctx context.Context) ([]storage.FieldMeta, error) {
+func (s *ColumnStorage) ListFields() ([]storage.FieldMeta, error) {
 	return nil, nil
 }
 
-func (s *ColumnStorage) UpdateField(ctx context.Context, name string, newMeta storage.FieldMeta) error {
+func (s *ColumnStorage) UpdateField(name string, newMeta storage.FieldMeta) error {
 	return nil
 }
 
-func (s *ColumnStorage) Writer(ctx context.Context) (storage.Writer, error) {
+func (s *ColumnStorage) Writer() (storage.Writer, error) {
 	return NewWriter(s.columns), nil
 }
 
-func (s *ColumnStorage) Reader(ctx context.Context) (storage.Reader, error) {
-	return nil, nil
-}
-
-func (s *ColumnStorage) BulkInsert(ctx context.Context, values []map[string]interface{}) error {
-	return nil
-}
-
-func (s *ColumnStorage) Delete(ctx context.Context, filter storage.Filter) (int64, error) {
-	return 0, nil
-}
-
-func (s *ColumnStorage) Aggregate(ctx context.Context, field string, aggFunc storage.AggregationFunc, filter storage.Filter) (interface{}, error) {
-	return nil, nil
-}
-
-func (s *ColumnStorage) Search(ctx context.Context, filter storage.Filter, fields ...string) (storage.Cursor, error) {
-	return nil, nil
-}
-
-func (s *ColumnStorage) Distinct(ctx context.Context, field string, filter storage.Filter) ([]interface{}, error) {
+func (s *ColumnStorage) Reader() (storage.Reader, error) {
 	return nil, nil
 }
 
@@ -167,5 +153,5 @@ func (t *ColumnStorage) UpdateRowCount(count int64) error {
 	atomic.StoreInt64(&t.StorageStats.TotalRows, count)
 	t.StorageStats.LastModified = time.Now()
 
-	return nil
+	return t.StorageStats.SaveToFile(t.StatsFilePath)
 }

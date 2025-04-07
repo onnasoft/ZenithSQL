@@ -58,7 +58,11 @@ func (cm *ConfigManager) SaveTableConfig(tableName string, config *TableConfig) 
 	}
 	defer file.Close()
 
-	if err := binary.Write(file, binary.LittleEndian, config.Stats); err != nil {
+	temp := storageStats{
+		TotalRows:    0,
+		LastModified: time.Now().Unix(),
+	}
+	if err := binary.Write(file, binary.LittleEndian, temp); err != nil {
 		return err
 	}
 
@@ -129,18 +133,7 @@ func (cm *ConfigManager) UpdateStats(tableName string, stats StorageStats) error
 	tablePath := filepath.Join(cm.basePath, tableName)
 	statsPath := filepath.Join(tablePath, statsFileName)
 
-	file, err := os.OpenFile(statsPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	temp := storageStats{
-		TotalRows:    stats.TotalRows,
-		TotalSize:    stats.TotalSize,
-		LastModified: stats.LastModified.Unix(),
-	}
-	if err := binary.Write(file, binary.LittleEndian, temp); err != nil {
+	if err := stats.SaveToFile(statsPath); err != nil {
 		return err
 	}
 
@@ -155,23 +148,9 @@ func (cm *ConfigManager) LoadStats(tableName string) (StorageStats, error) {
 	tablePath := filepath.Join(cm.basePath, tableName)
 	statsPath := filepath.Join(tablePath, statsFileName)
 
-	file, err := os.Open(statsPath)
-	if os.IsNotExist(err) {
-		return stats, nil
-	}
-	if err != nil {
+	if err := stats.LoadFromFile(statsPath); err != nil {
 		return stats, err
 	}
-	defer file.Close()
-
-	temp := storageStats{}
-	if err := binary.Read(file, binary.LittleEndian, &temp); err != nil {
-		return stats, err
-	}
-
-	stats.TotalRows = temp.TotalRows
-	stats.TotalSize = temp.TotalSize
-	stats.LastModified = time.Unix(temp.LastModified, 0)
 
 	return stats, nil
 }

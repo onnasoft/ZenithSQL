@@ -2,8 +2,10 @@ package storage
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"io"
+	"os"
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/model/types"
@@ -28,14 +30,57 @@ type Validator interface {
 
 type storageStats struct {
 	TotalRows    int64
-	TotalSize    int64
 	LastModified int64
 }
 
 type StorageStats struct {
 	TotalRows    int64
-	TotalSize    int64
 	LastModified time.Time
+}
+
+func (s *StorageStats) UpdateTotalRows(count int64) {
+	s.TotalRows += count
+}
+
+func (s *StorageStats) UpdateLastModified() {
+	s.LastModified = time.Now()
+}
+
+func (s *StorageStats) SaveToFile(filePath string) error {
+	temp := storageStats{
+		TotalRows:    s.TotalRows,
+		LastModified: s.LastModified.Unix(),
+	}
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if err := binary.Write(file, binary.LittleEndian, temp); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *StorageStats) LoadFromFile(filePath string) error {
+	temp := storageStats{}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if err := binary.Read(file, binary.LittleEndian, &temp); err != nil {
+		return err
+	}
+
+	s.TotalRows = temp.TotalRows
+	s.LastModified = time.Unix(temp.LastModified, 0)
+
+	return nil
 }
 
 // FieldStats contains column-specific statistics
@@ -62,20 +107,14 @@ type Storage interface {
 	Stats() StorageStats
 	Compact(ctx context.Context) error
 
-	CreateField(ctx context.Context, meta FieldMeta, validators ...Validator) error
-	DeleteField(ctx context.Context, name string) error
-	GetFieldMeta(ctx context.Context, name string) (FieldMeta, error)
-	ListFields(ctx context.Context) ([]FieldMeta, error)
-	UpdateField(ctx context.Context, name string, newMeta FieldMeta) error
+	CreateField(meta FieldMeta, validators ...Validator) error
+	DeleteField(name string) error
+	GetFieldMeta(name string) (FieldMeta, error)
+	ListFields() ([]FieldMeta, error)
+	UpdateField(name string, newMeta FieldMeta) error
 
-	Writer(ctx context.Context) (Writer, error)
-	Reader(ctx context.Context) (Reader, error)
-	BulkInsert(ctx context.Context, values []map[string]interface{}) error
-	Delete(ctx context.Context, filter Filter) (int64, error)
-
-	Aggregate(ctx context.Context, field string, aggFunc AggregationFunc, filter Filter) (interface{}, error)
-	Search(ctx context.Context, filter Filter, fields ...string) (Cursor, error)
-	Distinct(ctx context.Context, field string, filter Filter) ([]interface{}, error)
+	Writer() (Writer, error)
+	Reader() (Reader, error)
 
 	LockInsert() error
 	UnlockInsert() error
