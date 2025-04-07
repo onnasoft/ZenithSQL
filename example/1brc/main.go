@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"runtime"
 	"sync"
 	"time"
+	"unsafe"
 
+	"github.com/onnasoft/ZenithSQL/core/buffer"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/entity"
 	"github.com/sirupsen/logrus"
 )
 
@@ -84,20 +87,46 @@ func processDataOptimized(table *catalog.Table) float64 {
 func worker(table *catalog.Table, jobs <-chan [2]uint64, results chan<- float64, wg *sync.WaitGroup) {
 	defer wg.Done()
 
+	rw := buffer.NewReadWriter(table.BufData)
 	rowSize := table.SchemaData.Size()
 
 	temperatureField, _ := table.SchemaData.GetFieldByName("temperature")
+	if temperatureField.Reader == nil {
+		log.Error("temperatureField.Reader is nil")
+		return
+	}
 
 	for job := range jobs {
 		start, end := job[0], job[1]
 		var sum float64
 		offset := rowSize * int(start-1)
+		parser := Float64Type
 
 		for i := start; i <= end; i++ {
-			sum += entity.GetFloat64ValueAtOffset(temperatureField, table.BufData, offset)
+			rw.Seek(offset)
+			isSet, _ := rw.Read(temperatureField.IsSettedFlagPos, 1)
+			if isSet[0] == 0 {
+				continue
+			}
+			data, err := rw.Read(temperatureField.StartPosition, temperatureField.Length)
+			if err != nil {
+				fmt.Println("error reading data:", err)
+				continue
+			}
+			val, _ := parser(data)
+			sum += val
+
+			//sum += entity.GetFloat64ValueAtOffset(temperatureField, table.BufData, offset)
 			offset += rowSize
 		}
 
 		results <- sum
 	}
+}
+
+func Float64Type(data []byte) (float64, error) {
+	if len(data) < 8 {
+		return 0, errors.New("insufficient data for Float64 (need 8 bytes)")
+	}
+	return *(*float64)(unsafe.Pointer(&data[0])), nil
 }

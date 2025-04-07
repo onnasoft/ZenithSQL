@@ -1,60 +1,61 @@
 package executor
 
 import (
+	"context"
 	"time"
 
+	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/record"
 )
 
-func Insert(table *catalog.Table, e ...*record.Row) error {
+func Insert(table *catalog.Table, value ...map[string]interface{}) error {
 	table.LockInsert()
 	defer table.UnlockInsert()
 
-	if err := insert(table, e...); err != nil {
+	writer, err := insert(table, value...)
+	if err != nil {
 		return err
 	}
+	defer writer.Close()
 
-	if err := table.BufStats.Sync(); err != nil {
-		return err
+	if len(value) <= 100 {
+		if err := writer.Commit(); err != nil {
+			writer.Rollback()
+			return err
+		}
+	} else {
+		if err := writer.Flush(); err != nil {
+			writer.Rollback()
+			return err
+		}
 	}
 
-	if err := table.BufMeta.Sync(); err != nil {
-		return err
-	}
-
-	if err := table.SaveStats(); err != nil {
+	if err := writer.Close(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func insert(table *catalog.Table, e ...*record.Row) error {
+func insert(table *catalog.Table, value ...map[string]interface{}) (storage.Writer, error) {
 	now := time.Now()
 
-	for _, row := range e {
-		if err := row.Meta.SetValue("created_at", now); err != nil {
-			return err
-		}
+	writer, err := table.Writer(context.Background())
+	if err != nil {
+		return nil, err
+	}
 
-		if err := row.Meta.SetValue("updated_at", now); err != nil {
-			return err
-		}
+	for _, row := range value {
+		row["created_at"] = now
+		row["updated_at"] = now
 
 		id := table.GetNextID()
-		if err := row.SetID(id); err != nil {
-			return err
-		}
+		row["id"] = id
 
-		if err := row.Meta.Save(); err != nil {
-			return err
-		}
-
-		if err := row.Data.Save(); err != nil {
-			return err
+		if err := writer.Write(row); err != nil {
+			return nil, err
 		}
 	}
 
-	return nil
+	return writer, nil
 }

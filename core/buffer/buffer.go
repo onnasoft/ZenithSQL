@@ -9,8 +9,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const pageSize = 1024 * 1024 * 256 // 256MB
-
 type Buffer struct {
 	data         []byte
 	length       int
