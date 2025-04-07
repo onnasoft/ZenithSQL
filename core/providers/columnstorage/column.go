@@ -53,8 +53,6 @@ func (c *Column) init() error {
 	}
 	c.MMapFile = buff
 
-	fmt.Println("Column buffer initialized:", filepath)
-
 	return nil
 }
 

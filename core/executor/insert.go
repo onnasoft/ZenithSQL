@@ -45,16 +45,18 @@ func insert(table *catalog.Table, value ...map[string]interface{}) (storage.Writ
 		return nil, err
 	}
 
+	id := table.GetNextID()
 	for _, row := range value {
 		row["created_at"] = now
 		row["updated_at"] = now
 
-		id := table.GetNextID()
 		row["id"] = id
 
 		if err := writer.Write(row); err != nil {
 			return nil, err
 		}
+
+		id++
 	}
 
 	return writer, nil

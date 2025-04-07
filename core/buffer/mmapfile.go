@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	pageSize       = 1024 * 1024 * 256 // 256MB
+	pageSize       = 4 * 1024 // 256MB
 	maxGrowRetries = 3
 )
 

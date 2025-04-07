@@ -26,11 +26,16 @@ type Validator interface {
 	Validate(value interface{}) error
 }
 
+type storageStats struct {
+	TotalRows    int64
+	TotalSize    int64
+	LastModified int64
+}
+
 type StorageStats struct {
-	TotalRows    int64                 `json:"total_rows"`
-	TotalSize    int64                 `json:"total_size"`
-	LastModified time.Time             `json:"last_modified"`
-	FieldStats   map[string]FieldStats `json:"field_stats"`
+	TotalRows    int64
+	TotalSize    int64
+	LastModified time.Time
 }
 
 // FieldStats contains column-specific statistics
@@ -74,4 +79,8 @@ type Storage interface {
 
 	LockInsert() error
 	UnlockInsert() error
+
+	GetNextID() int64
+	RowCount() int64
+	UpdateRowCount(count int64) error
 }

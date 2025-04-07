@@ -3,7 +3,6 @@ package storage
 import (
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -15,22 +14,9 @@ const (
 	statsFileName  = "stats.bin"
 )
 
-type statsHeader struct {
-	LastModified int64
-	FieldCount   int32
-}
-
-type fieldStats struct {
-	DiskSize      int64
-	NullCount     int64
-	DistinctCount int64
-	MinValue      float64
-	MaxValue      float64
-}
-
 type TableConfig struct {
 	Fields []FieldMeta  `json:"fields"`
-	Stats  StorageStats `json:"stats,omitempty"`
+	Stats  StorageStats `json:"-"`
 }
 
 type ConfigManager struct {
@@ -72,29 +58,16 @@ func (cm *ConfigManager) SaveTableConfig(tableName string, config *TableConfig) 
 	}
 	defer file.Close()
 
-	header := statsHeader{
-		LastModified: time.Now().UnixNano(),
-		FieldCount:   int32(len(config.Fields)),
-	}
-
-	if err := binary.Write(file, binary.LittleEndian, &header); err != nil {
+	if err := binary.Write(file, binary.LittleEndian, config.Stats); err != nil {
 		return err
-	}
-
-	for range config.Fields {
-		fs := fieldStats{}
-		if err := binary.Write(file, binary.LittleEndian, &fs); err != nil {
-			return err
-		}
 	}
 
 	return nil
 }
 
 func (cm *ConfigManager) LoadTableConfig(tableName string) (TableConfig, error) {
-	fmt.Println("Loading config for table:", configFileName, tableName, cm.basePath)
-	//cm.mu.RLock()
-	//defer cm.mu.RUnlock()
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 
 	var config TableConfig
 	configPath := filepath.Join(cm.basePath, tableName, configFileName)
@@ -162,33 +135,13 @@ func (cm *ConfigManager) UpdateStats(tableName string, stats StorageStats) error
 	}
 	defer file.Close()
 
-	header := statsHeader{
-		LastModified: time.Now().UnixNano(),
-		FieldCount:   int32(len(stats.FieldStats)),
+	temp := storageStats{
+		TotalRows:    stats.TotalRows,
+		TotalSize:    stats.TotalSize,
+		LastModified: stats.LastModified.Unix(),
 	}
-
-	if err := binary.Write(file, binary.LittleEndian, &header); err != nil {
+	if err := binary.Write(file, binary.LittleEndian, temp); err != nil {
 		return err
-	}
-
-	for _, field := range stats.FieldStats {
-		fs := fieldStats{
-			DiskSize:      field.DiskSize,
-			NullCount:     field.NullCount,
-			DistinctCount: field.DistinctCount,
-		}
-
-		if min, ok := convertToFloat64(field.MinValue); ok {
-			fs.MinValue = min
-		}
-
-		if max, ok := convertToFloat64(field.MaxValue); ok {
-			fs.MaxValue = max
-		}
-
-		if err := binary.Write(file, binary.LittleEndian, &fs); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -199,8 +152,6 @@ func (cm *ConfigManager) LoadStats(tableName string) (StorageStats, error) {
 	defer cm.mu.RUnlock()
 
 	var stats StorageStats
-	stats.FieldStats = make(map[string]FieldStats)
-
 	tablePath := filepath.Join(cm.basePath, tableName)
 	statsPath := filepath.Join(tablePath, statsFileName)
 
@@ -213,50 +164,14 @@ func (cm *ConfigManager) LoadStats(tableName string) (StorageStats, error) {
 	}
 	defer file.Close()
 
-	var header statsHeader
-	if err := binary.Read(file, binary.LittleEndian, &header); err != nil {
+	temp := storageStats{}
+	if err := binary.Read(file, binary.LittleEndian, &temp); err != nil {
 		return stats, err
 	}
 
-	stats.LastModified = time.Unix(0, header.LastModified)
-
-	config, err := cm.LoadTableConfig(tableName)
-	if err != nil {
-		return stats, err
-	}
-
-	for i := 0; i < len(config.Fields); i++ {
-		var fs fieldStats
-		if err := binary.Read(file, binary.LittleEndian, &fs); err != nil {
-			return stats, err
-		}
-
-		if i < len(config.Fields) {
-			fieldName := config.Fields[i].Name
-			stats.FieldStats[fieldName] = FieldStats{
-				DiskSize:      fs.DiskSize,
-				NullCount:     fs.NullCount,
-				DistinctCount: fs.DistinctCount,
-				MinValue:      fs.MinValue,
-				MaxValue:      fs.MaxValue,
-			}
-		}
-	}
+	stats.TotalRows = temp.TotalRows
+	stats.TotalSize = temp.TotalSize
+	stats.LastModified = time.Unix(temp.LastModified, 0)
 
 	return stats, nil
-}
-
-func convertToFloat64(value interface{}) (float64, bool) {
-	switch v := value.(type) {
-	case int:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case float32:
-		return float64(v), true
-	case float64:
-		return v, true
-	default:
-		return 0, false
-	}
 }

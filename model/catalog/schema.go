@@ -112,6 +112,7 @@ func (s *Schema) CreateTable(name string, config *storage.TableConfig) (*Table, 
 		Required: false,
 		Length:   8,
 	})
+
 	config.Fields = fields
 
 	s.ConfigManager.SaveTableConfig(name, config)
@@ -136,7 +137,6 @@ func (s *Schema) CreateTable(name string, config *storage.TableConfig) (*Table, 
 
 func (s *Schema) OpenTable(name string) (*Table, error) {
 	config, err := s.ConfigManager.LoadTableConfig(name)
-	fmt.Println("Config path:", config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load table config: %v", err)
 	}

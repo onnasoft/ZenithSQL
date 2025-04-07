@@ -79,42 +79,12 @@ func (w *Writer) Write(values map[string]interface{}) error {
 	return nil
 }
 
-func (w *Writer) WriteField(id int64, field string, value interface{}) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if w.closed {
-		return errors.New(errWriterClosed)
-	}
-
-	if id == 0 {
-		return errors.New(errIDZero)
-	}
-	id--
-
-	col, ok := w.columns[field]
-	if !ok {
-		return fmt.Errorf(errFieldNotFound, field)
-	}
-
-	if err := col.isValid(value); err != nil {
-		return fmt.Errorf(errFieldInvalid, field, err)
-	}
-
-	if _, exists := w.pending[id]; !exists {
-		return fmt.Errorf(errIDNotFound, id+1)
-	}
-
-	return w.writeFieldInternal(id, field, value)
-}
-
 func (w *Writer) writeFieldInternal(id int64, name string, value interface{}) error {
 	col := w.columns[name]
-	recordLength := col.Length + 1 // +1 for status byte
+	recordLength := col.Length + 2 // +1 for status byte
 	offset := id * int64(recordLength)
 
-	// Check buffer bounds
-	if offset+int64(recordLength) > int64(len(col.MMapFile.Data())) {
+	if !col.MMapFile.CanWrite(int(offset), recordLength) {
 		return fmt.Errorf("record exceeds buffer capacity for column %s", name)
 	}
 
@@ -124,6 +94,7 @@ func (w *Writer) writeFieldInternal(id int64, name string, value interface{}) er
 	if err := col.write(data[valueByteOffset:], value); err != nil {
 		return fmt.Errorf("error writing value for column %s: %w", name, err)
 	}
+	data[col.Length+1] = '\n'
 
 	return nil
 }
@@ -176,8 +147,8 @@ func (w *Writer) Commit() error {
 	// Sync only the modified ranges for each column
 	for id := range w.pending {
 		for name, col := range w.columns {
-			recordLength := col.Length + 1
-			offset := id * int64(recordLength)
+			recordLength := col.Length + 2
+			offset := (id) * int64(recordLength)
 			syncLength := recordLength
 
 			// Check bounds
@@ -186,7 +157,7 @@ func (w *Writer) Commit() error {
 			}
 
 			// Sync the modified range for this column
-			if err := col.MMapFile.SyncRange(int(offset), syncLength); err != nil {
+			if err := col.MMapFile.Sync(); err != nil {
 				return fmt.Errorf("failed to sync column %s at offset %d: %w",
 					name, offset, err)
 			}
@@ -212,7 +183,7 @@ func (w *Writer) Rollback() error {
 func (w *Writer) rollbackInternal() error {
 	for id := range w.pending {
 		for _, col := range w.columns {
-			recordLength := col.Length + 1
+			recordLength := col.Length + 2 // +2 for status and newline
 			offset := id * int64(recordLength)
 
 			// Check bounds before writing

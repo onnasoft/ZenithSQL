@@ -37,7 +37,6 @@ func OpenTable(config *TableConfig) (*Table, error) {
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
-	fmt.Println("Storage path:", config.Path)
 	table := &Table{
 		Name:          config.Name,
 		Path:          config.Path,
@@ -51,8 +50,4 @@ func OpenTable(config *TableConfig) (*Table, error) {
 	}
 
 	return table, nil
-}
-
-func (t *Table) GetNextID() int64 {
-	return 0
 }

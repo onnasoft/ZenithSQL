@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/sirupsen/logrus"
@@ -33,6 +35,9 @@ func NewColumnStorage(cfg *ColumnStorageConfig) *ColumnStorage {
 		BasePath:     cfg.BasePath,
 		StorageStats: cfg.StorageStats,
 		Logger:       cfg.Logger,
+
+		insertLock: &sync.Mutex{},
+		importLock: &sync.Mutex{},
 	}
 
 	return store
@@ -101,7 +106,7 @@ func (s *ColumnStorage) UpdateField(ctx context.Context, name string, newMeta st
 }
 
 func (s *ColumnStorage) Writer(ctx context.Context) (storage.Writer, error) {
-	return nil, nil
+	return NewWriter(s.columns), nil
 }
 
 func (s *ColumnStorage) Reader(ctx context.Context) (storage.Reader, error) {
@@ -147,5 +152,20 @@ func (s *ColumnStorage) LockImport() error {
 func (s *ColumnStorage) UnlockImport() error {
 	s.importLock.Unlock()
 	s.insertLock.Unlock()
+	return nil
+}
+
+func (t *ColumnStorage) GetNextID() int64 {
+	return t.StorageStats.TotalRows + 1
+}
+
+func (t *ColumnStorage) RowCount() int64 {
+	return t.StorageStats.TotalRows
+}
+
+func (t *ColumnStorage) UpdateRowCount(count int64) error {
+	atomic.StoreInt64(&t.StorageStats.TotalRows, count)
+	t.StorageStats.LastModified = time.Now()
+
 	return nil
 }
