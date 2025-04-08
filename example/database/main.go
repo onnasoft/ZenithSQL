@@ -38,17 +38,15 @@ func setupDatabaseAndTable() *catalog.Catalog {
 	}
 	defer catalog.Close()
 
-	db, err := catalog.CreateDatabase("testdb")
+	_, err = catalog.CreateDatabase("testdb")
 	if err != nil {
 		log.Fatalf("error creating database: %v", err)
 	}
-	defer db.Close()
 
-	db, err = catalog.GetDatabase("testdb")
+	db, err := catalog.GetDatabase("testdb")
 	if err != nil {
 		log.Fatalf("error opening database: %v", err)
 	}
-	defer db.Close()
 
 	_, err = db.CreateSchema("public")
 	if err != nil {
@@ -98,16 +96,8 @@ func setupDatabaseAndTable() *catalog.Catalog {
 	}
 
 	if _, err = schema.CreateTable("users", tableConfig); err != nil {
-		log.Fatal("Error creating table: ", err)
+		log.Info("Table already exists, skipping creation")
 	}
-
-	log.Info("Table created successfully")
-	table, err := schema.GetTable("users")
-	if err != nil {
-		log.Fatalf("error getting table: %v", err)
-	}
-
-	fmt.Println("Table created:", table.Name)
 
 	return catalog
 }

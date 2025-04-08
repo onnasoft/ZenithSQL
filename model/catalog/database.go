@@ -33,7 +33,6 @@ func NewDatabase(config *DatabaseConfig) (*Database, error) {
 
 func OpenDatabase(config *DatabaseConfig) (*Database, error) {
 	fullPath := filepath.Join(config.Path, "schemas")
-	fmt.Println("Opening database at path:", fullPath)
 
 	schemasDir, err := os.ReadDir(fullPath)
 	if err != nil {

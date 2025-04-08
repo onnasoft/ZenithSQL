@@ -116,7 +116,6 @@ func (s *Schema) CreateTable(name string, config *storage.TableConfig) (*Table, 
 	config.Fields = fields
 
 	if _, err := s.ConfigManager.LoadStats(name); err == nil {
-		fmt.Println("Table already exists@@@", err)
 		return nil, fmt.Errorf("table %s already exists", name)
 	}
 	s.ConfigManager.SaveTableConfig(name, config)
