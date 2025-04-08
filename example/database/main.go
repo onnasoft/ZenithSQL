@@ -19,13 +19,28 @@ func main() {
 	catalog := setupDatabaseAndTable()
 	defer catalog.Close()
 	users := []map[string]interface{}{
-		{"name": "Javier Xar", "email": "xarjavier@gmail.com"},
-		{"name": "Jhon Doe", "email": "jhondoe@gmail.com"},
+		{"name": "Javier Xar", "email": "xarjavier@gmail.com", "avg": 1.2},
+		{"name": "Jhon Doe", "email": "jhondoe@gmail.com", "avg": 2.3},
 	}
 
 	insertRecords(catalog, users)
-	//retrieveAndLogRecords(table)
+	table, err := catalog.GetTable("testdb", "public", "users")
+	if err != nil {
+		log.Fatalf("error getting table: %v", err)
+	}
 
+	reader, err := table.Reader()
+	if err != nil {
+		log.Fatalf("error creating reader: %v", err)
+	}
+	defer reader.Close()
+
+	reader.Seek(1)
+	var name string
+	reader.ReadValue("name", &name)
+	fmt.Printf("name: %s\n", name)
+	fmt.Println(reader.Values())
+	fmt.Println(reader.Values()["avg"])
 }
 
 func setupDatabaseAndTable() *catalog.Catalog {
@@ -82,6 +97,12 @@ func setupDatabaseAndTable() *catalog.Catalog {
 						Params: json.RawMessage(`{}`),
 					},
 				},
+			},
+			{
+				Name:       "avg",
+				Type:       types.Float64Type,
+				Length:     8,
+				Validators: []storage.ValidatorInfo{},
 			},
 		},
 	}

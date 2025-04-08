@@ -9,11 +9,17 @@ import (
 )
 
 type TruncateTableStatement struct {
+	Database  string `msgpack:"database" valid:"required,alphanumunderscore"`
+	Schema    string `msgpack:"schema" valid:"required,alphanumunderscore"`
 	TableName string `msgpack:"table_name" valid:"required,alphanumunderscore"`
 }
 
-func NewTruncateTableStatement(tableName string) (*TruncateTableStatement, error) {
-	stmt := &TruncateTableStatement{TableName: tableName}
+func NewTruncateTableStatement(database, schema, tableName string) (*TruncateTableStatement, error) {
+	stmt := &TruncateTableStatement{
+		Database:  database,
+		Schema:    schema,
+		TableName: tableName,
+	}
 
 	if _, err := govalidator.ValidateStruct(stmt); err != nil {
 		return nil, err

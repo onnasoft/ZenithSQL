@@ -3,55 +3,69 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"sync"
 	"time"
 	"unsafe"
 
-	"github.com/onnasoft/ZenithSQL/core/buffer"
+	"github.com/onnasoft/ZenithSQL/core/providers/columnstorage"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/sirupsen/logrus"
 )
 
 var (
 	log       = logrus.New()
-	batchSize = uint64(1000)
+	batchSize = int64(1000)
 )
 
 func main() {
 	startTime := time.Now()
 
-	db, err := catalog.OpenDatabase(&catalog.DatabaseConfig{
-		Name:   "testdb",
+	catalog, err := catalog.OpenCatalog(&catalog.CatalogConfig{
 		Path:   "./data",
-		Logger: log,
+		Logger: logrus.New(),
 	})
 	if err != nil {
-		log.Fatalf("error opening database: %v", err)
+		log.Fatalf("error opening catalog: %v", err)
 	}
+	defer catalog.Close()
 
-	schema, err := db.GetSchema("public")
-	if err != nil {
-		log.Fatalf("error getting schema: %v", err)
-	}
-
-	table, err := schema.GetTable("temperatures")
+	table, err := catalog.GetTable("testdb", "public", "temperatures")
 	if err != nil {
 		log.Fatalf("error getting table: %v", err)
 	}
 
+	fmt.Println("Total rows:", table.Stats().TotalRows)
+	totalRows := int64(1000_000_000)
+	table.Storage.UpdateRowCount(totalRows)
+
+	reader, err := table.Reader()
+	if err != nil {
+		log.Fatalf("error creating reader: %v", err)
+	}
+	defer reader.Close()
+	if err := reader.Seek(1); err != nil {
+		log.Fatalf("error seeking: %v", err)
+	}
+	fmt.Println(reader.Values())
+	if err := reader.Seek(1000_000_00); err != nil {
+		log.Fatalf("error seeking: %v", err)
+	}
+	fmt.Println(reader.Values())
+	os.Exit(0)
+
 	log.Infof("Processing table %s", table.Name)
 	totalSum := processDataOptimized(table)
 
-	log.Infof("Finished processing. Total sum: %.2f, Time taken: %v",
-		totalSum, time.Since(startTime))
+	log.Infof("Finished processing. Total sum: %.2f, Time taken: %v", totalSum, time.Since(startTime))
 }
 
 func processDataOptimized(table *catalog.Table) float64 {
 	numWorkers := runtime.NumCPU()
-	totalRows := table.Stats.GetValue("rows").(uint64)
+	totalRows := table.Stats().TotalRows
 
-	jobs := make(chan [2]uint64, numWorkers)
+	jobs := make(chan [2]int64, numWorkers)
 	results := make(chan float64, numWorkers)
 
 	var wg sync.WaitGroup
@@ -62,12 +76,12 @@ func processDataOptimized(table *catalog.Table) float64 {
 
 	go func() {
 		defer close(jobs)
-		for start := uint64(1); start <= totalRows; start += batchSize {
+		for start := int64(1); start <= totalRows; start += batchSize {
 			end := start + batchSize - 1
 			if end > totalRows {
 				end = totalRows
 			}
-			jobs <- [2]uint64{start, end}
+			jobs <- [2]int64{start, end}
 		}
 	}()
 
@@ -84,40 +98,50 @@ func processDataOptimized(table *catalog.Table) float64 {
 	return totalSum
 }
 
-func worker(table *catalog.Table, jobs <-chan [2]uint64, results chan<- float64, wg *sync.WaitGroup) {
+func worker(table *catalog.Table, jobs <-chan [2]int64, results chan<- float64, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	rw := buffer.NewReadWriter(table.BufData)
-	rowSize := table.SchemaData.Size()
+	var itable interface{} = table.Storage
 
-	temperatureField, _ := table.SchemaData.GetFieldByName("temperature")
-	if temperatureField.Reader == nil {
-		log.Error("temperatureField.Reader is nil")
+	ctable, ok := itable.(*columnstorage.ColumnStorage)
+	if !ok {
+		log.Errorf("error casting table to ColumnStorage")
+		return
+	}
+
+	temperatureField, ok := ctable.Columns()["temperature"]
+	if !ok {
+		log.Errorf("error getting temperature field from table %s", table.Name)
+		return
+	}
+
+	dreader, err := ctable.Reader()
+	if err != nil {
+		log.Errorf("error creating reader: %v", err)
+	}
+	defer dreader.Close()
+
+	var ireader interface{} = dreader
+	reader, ok := ireader.(*columnstorage.ColumnReader)
+	if !ok {
+		log.Errorf("error casting reader to ColumnStorage Reader")
 		return
 	}
 
 	for job := range jobs {
 		start, end := job[0], job[1]
 		var sum float64
-		offset := rowSize * int(start-1)
-		parser := Float64Type
+		var num float64
 
 		for i := start; i <= end; i++ {
-			rw.Seek(offset)
-			isSet, _ := rw.Read(temperatureField.IsSettedFlagPos, 1)
-			if isSet[0] == 0 {
-				continue
-			}
-			data, err := rw.Read(temperatureField.StartPosition, temperatureField.Length)
-			if err != nil {
-				fmt.Println("error reading data:", err)
-				continue
-			}
-			val, _ := parser(data)
-			sum += val
+			reader.Seek(i)
 
-			//sum += entity.GetFloat64ValueAtOffset(temperatureField, table.BufData, offset)
-			offset += rowSize
+			reader.ReadFieldValue(temperatureField, &num)
+			if num == 0 {
+				fmt.Println("zero value found at index", i)
+				continue
+			}
+			sum += num
 		}
 
 		results <- sum

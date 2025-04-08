@@ -2,6 +2,8 @@ package columnstorage
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/onnasoft/ZenithSQL/core/buffer"
@@ -17,6 +19,8 @@ type Column struct {
 	Validators []validate.Validator
 	isValid    func(val interface{}) error
 	write      func(buffer []byte, val interface{}) error
+	read       func(data []byte, out interface{}) error
+	parser     func(b []byte) interface{}
 
 	BasePath string
 	MMapFile *buffer.MMapFile
@@ -28,14 +32,31 @@ func NewColumn(name string, dataType types.DataType, length int, required bool, 
 		return nil, fmt.Errorf("failed to get writer for data type %s: %w", dataType, err)
 	}
 
+	reader, err := dataType.Reader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reader for data type %s: %w", dataType, err)
+	}
+
+	parser, err := dataType.Parser()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parser for data type %s: %w", dataType, err)
+	}
+
+	effectiveLength, err := dataType.ResolveLength(length)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve length for data type %s: %w", dataType, err)
+	}
+
 	col := &Column{
 		Name:     name,
 		DataType: dataType,
-		Length:   length,
+		Length:   effectiveLength,
 		Required: required,
 		BasePath: basePath,
 		isValid:  dataType.Valid(),
 		write:    write,
+		read:     reader,
+		parser:   parser,
 	}
 
 	if err := col.init(); err != nil {
@@ -47,13 +68,26 @@ func NewColumn(name string, dataType types.DataType, length int, required bool, 
 
 func (c *Column) init() error {
 	filepath := filepath.Join(c.BasePath, c.Name+".data")
-	buff, err := buffer.Open(filepath, 0)
+	buff, err := buffer.Open(filepath, 0, (c.Length+2)*10_000_000)
 	if err != nil {
 		return err
 	}
 	c.MMapFile = buff
 
 	return nil
+}
+
+func (c *Column) Truncate() error {
+	path := filepath.Join(c.BasePath, c.Name+".data")
+
+	if _, err := os.Stat(path); err == nil {
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("failed to remove file %s: %w", path, err)
+		}
+		log.Printf("Removed existing file %s", path)
+	}
+
+	return c.init()
 }
 
 func (c *Column) Close() error {

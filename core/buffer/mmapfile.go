@@ -9,19 +9,19 @@ import (
 )
 
 const (
-	pageSize       = 4 * 1024 // 256MB
 	maxGrowRetries = 3
 )
 
 type MMapFile struct {
-	data    []byte
-	file    *os.File
-	size    int
-	path    string
-	growMux sync.RWMutex
+	data     []byte
+	file     *os.File
+	size     int
+	path     string
+	pageSize int
+	growMux  sync.RWMutex
 }
 
-func Open(path string, initialSize int) (*MMapFile, error) {
+func Open(path string, initialSize, pageSize int) (*MMapFile, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
@@ -44,10 +44,11 @@ func Open(path string, initialSize int) (*MMapFile, error) {
 	}
 
 	return &MMapFile{
-		data: data,
-		file: file,
-		size: initialSize,
-		path: path,
+		data:     data,
+		file:     file,
+		size:     initialSize,
+		pageSize: pageSize,
+		path:     path,
 	}, nil
 }
 
@@ -79,7 +80,7 @@ func (m *MMapFile) tryGrow(requiredSize int) bool {
 	}
 
 	// Calculate new size (round up to nearest pageSize multiple)
-	newSize := ((requiredSize + pageSize - 1) / pageSize) * pageSize
+	newSize := ((requiredSize + m.pageSize - 1) / m.pageSize) * m.pageSize
 
 	// Try growing the file
 	for i := 0; i < maxGrowRetries; i++ {
@@ -87,7 +88,7 @@ func (m *MMapFile) tryGrow(requiredSize int) bool {
 			return true
 		}
 		// If we get ENOMEM, try with smaller increment
-		newSize = m.size + pageSize
+		newSize = m.size + m.pageSize
 		if newSize >= requiredSize {
 			break
 		}
@@ -146,10 +147,14 @@ func (m *MMapFile) SyncRange(offset, length int) error {
 
 // syncRange internal implementation with bounds checking
 func (m *MMapFile) syncRange(offset, length int) error {
+	pageSize := syscall.Getpagesize()
+	alignedOffset := offset - (offset % pageSize)
+	alignedLength := length + (offset - alignedOffset)
+
 	_, _, errno := syscall.Syscall(
 		syscall.SYS_MSYNC,
-		uintptr(unsafe.Pointer(&m.data[offset])),
-		uintptr(length),
+		uintptr(unsafe.Pointer(&m.data[alignedOffset])),
+		uintptr(alignedLength),
 		syscall.MS_SYNC,
 	)
 	if errno != 0 {

@@ -114,11 +114,17 @@ type Storage interface {
 	ListFields() ([]FieldMeta, error)
 	UpdateField(name string, newMeta FieldMeta) error
 
+	Truncate() error
+
 	Writer() (Writer, error)
 	Reader() (Reader, error)
 
+	Lock() error
+	Unlock() error
 	LockInsert() error
 	UnlockInsert() error
+	LockImport() error
+	UnlockImport() error
 
 	GetNextID() int64
 	RowCount() int64

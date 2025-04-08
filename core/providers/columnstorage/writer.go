@@ -3,15 +3,16 @@ package columnstorage
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 )
 
 const (
-	errWriterClosed  = "writer is closed"
-	errIDZero        = "id cannot be zero"
-	errIDNotFound    = "record with id %d not found in current transaction"
-	errFieldNotFound = "column %s not found"
-	errFieldInvalid  = "invalid value for column %s: %w"
+	errColumnWriterClosed = "writer is closed"
+	errIDZero             = "id cannot be zero"
+	errIDNotFound         = "record with id %d not found in current transaction"
+	errFieldNotFound      = "column %s not found"
+	errFieldInvalid       = "invalid value for column %s: %w"
 )
 
 const (
@@ -19,7 +20,7 @@ const (
 	valueByteOffset  = 1 // Actual data starts after status byte
 )
 
-type Writer struct {
+type ColumnWriter struct {
 	columns   map[string]*Column
 	pending   map[int64]struct{} // Using map for faster lookups
 	mu        sync.Mutex
@@ -27,19 +28,19 @@ type Writer struct {
 	committed bool
 }
 
-func NewWriter(columns map[string]*Column) *Writer {
-	return &Writer{
+func NewColumnWriter(columns map[string]*Column) *ColumnWriter {
+	return &ColumnWriter{
 		columns: columns,
 		pending: make(map[int64]struct{}),
 	}
 }
 
-func (w *Writer) Write(values map[string]interface{}) error {
+func (w *ColumnWriter) Write(values map[string]interface{}) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.closed {
-		return errors.New(errWriterClosed)
+		return errors.New(errColumnWriterClosed)
 	}
 
 	// Validate ID first
@@ -68,6 +69,12 @@ func (w *Writer) Write(values map[string]interface{}) error {
 		}
 	}
 
+	for name := range w.columns {
+		if _, ok := values[name]; !ok {
+			values[name] = nil
+		}
+	}
+
 	// Write each field
 	for name, value := range values {
 		if err := w.writeFieldInternal(id, name, value); err != nil {
@@ -79,9 +86,9 @@ func (w *Writer) Write(values map[string]interface{}) error {
 	return nil
 }
 
-func (w *Writer) writeFieldInternal(id int64, name string, value interface{}) error {
+func (w *ColumnWriter) writeFieldInternal(id int64, name string, value interface{}) error {
 	col := w.columns[name]
-	recordLength := col.Length + 2 // +1 for status byte
+	recordLength := col.Length + 2 // +2 for status and newline
 	offset := id * int64(recordLength)
 
 	if !col.MMapFile.CanWrite(int(offset), recordLength) {
@@ -99,7 +106,7 @@ func (w *Writer) writeFieldInternal(id int64, name string, value interface{}) er
 	return nil
 }
 
-func (w *Writer) Flush() error {
+func (w *ColumnWriter) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -116,7 +123,7 @@ func (w *Writer) Flush() error {
 	return nil
 }
 
-func (w *Writer) Close() error {
+func (w *ColumnWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -136,28 +143,58 @@ func (w *Writer) Close() error {
 	return err
 }
 
-func (w *Writer) Commit() error {
+func (w *ColumnWriter) Commit() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.closed {
-		return errors.New(errWriterClosed)
+		return errors.New(errColumnWriterClosed)
 	}
 
-	// Sync only the modified ranges for each column
-	for id := range w.pending {
-		for name, col := range w.columns {
-			recordLength := col.Length + 2
-			offset := (id) * int64(recordLength)
-			syncLength := recordLength
+	if len(w.pending) == 0 {
+		w.committed = true
+		return nil
+	}
 
-			// Check bounds
-			if offset+int64(syncLength) > int64(len(col.MMapFile.Data())) {
+	type Range struct {
+		Start int64
+		End   int64
+	}
+
+	// Obtener los ids ordenados
+	ids := make([]int64, 0, len(w.pending))
+	for id := range w.pending {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	// Agrupar rangos contiguos
+	ranges := []Range{}
+	start := ids[0]
+	end := ids[0]
+	for i := 1; i < len(ids); i++ {
+		if ids[i] == end+1 {
+			end = ids[i]
+		} else {
+			ranges = append(ranges, Range{Start: start, End: end})
+			start = ids[i]
+			end = ids[i]
+		}
+	}
+	ranges = append(ranges, Range{Start: start, End: end})
+
+	for name, col := range w.columns {
+		recordLength := col.Length + 2
+
+		for _, r := range ranges {
+			offset := r.Start * int64(recordLength)
+			length := (r.End - r.Start + 1) * int64(recordLength)
+
+			if offset+length > int64(len(col.MMapFile.Data())) {
 				continue
 			}
 
-			// Sync the modified range for this column
-			if err := col.MMapFile.Sync(); err != nil {
+			if err := col.MMapFile.SyncRange(int(offset), int(length)); err != nil {
 				return fmt.Errorf("failed to sync column %s at offset %d: %w",
 					name, offset, err)
 			}
@@ -169,7 +206,7 @@ func (w *Writer) Commit() error {
 	return nil
 }
 
-func (w *Writer) Rollback() error {
+func (w *ColumnWriter) Rollback() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -180,7 +217,7 @@ func (w *Writer) Rollback() error {
 	return w.rollbackInternal()
 }
 
-func (w *Writer) rollbackInternal() error {
+func (w *ColumnWriter) rollbackInternal() error {
 	for id := range w.pending {
 		for _, col := range w.columns {
 			recordLength := col.Length + 2 // +2 for status and newline

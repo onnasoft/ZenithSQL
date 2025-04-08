@@ -2,6 +2,7 @@ package columnstorage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -55,6 +56,7 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 	for _, meta := range s.fields {
 		col, err := NewColumn(meta.Name, meta.Type, meta.Length, meta.Required, s.BasePath)
 		if err != nil {
+			fmt.Println(meta)
 			s.Logger.WithError(err).Errorf("Failed to create column %s", meta.Name)
 			continue
 		}
@@ -63,6 +65,21 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 
 	s.columns = columns
 
+	return nil
+}
+
+func (s *ColumnStorage) Truncate() error {
+	s.Lock()
+	defer s.Unlock()
+
+	for _, col := range s.columns {
+		if err := col.Truncate(); err != nil {
+			s.Logger.WithError(err).Errorf("Failed to truncate column %s", col.Name)
+			return err
+		}
+	}
+	s.StorageStats.TotalRows = 0
+	s.StorageStats.SaveToFile(s.StatsFilePath)
 	return nil
 }
 
@@ -112,11 +129,21 @@ func (s *ColumnStorage) UpdateField(name string, newMeta storage.FieldMeta) erro
 }
 
 func (s *ColumnStorage) Writer() (storage.Writer, error) {
-	return NewWriter(s.columns), nil
+	return NewColumnWriter(s.columns), nil
 }
 
 func (s *ColumnStorage) Reader() (storage.Reader, error) {
-	return nil, nil
+	return NewColumnReader(s.columns, s.StorageStats), nil
+}
+
+func (s *ColumnStorage) Lock() error {
+	s.LockImport()
+	return nil
+}
+
+func (s *ColumnStorage) Unlock() error {
+	s.UnlockImport()
+	return nil
 }
 
 func (s *ColumnStorage) LockInsert() error {
@@ -154,4 +181,8 @@ func (t *ColumnStorage) UpdateRowCount(count int64) error {
 	t.StorageStats.LastModified = time.Now()
 
 	return t.StorageStats.SaveToFile(t.StatsFilePath)
+}
+
+func (t *ColumnStorage) Columns() map[string]*Column {
+	return t.columns
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -12,9 +13,10 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/executor"
+	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/entity"
-	"github.com/onnasoft/ZenithSQL/model/record"
+	"github.com/onnasoft/ZenithSQL/model/types"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 )
@@ -22,9 +24,9 @@ import (
 const (
 	delimiter        = '\n'
 	separator        = ';'
-	batchSize        = 1000
+	batchSize        = 10000
 	progressInterval = 1 * time.Second
-	maxWorkers       = 8
+	maxWorkers       = 16
 )
 
 type ImportStats struct {
@@ -47,55 +49,73 @@ func main() {
 	startTime := time.Now()
 	filePath := os.Args[1]
 
-	db, err := catalog.OpenDatabase(&catalog.DatabaseConfig{
-		Name:   "testdb",
+	catalog, err := catalog.OpenCatalog(&catalog.CatalogConfig{
 		Path:   "./data",
 		Logger: logrus.New(),
 	})
 	if err != nil {
+		log.Fatalf("error opening catalog: %v", err)
+	}
+	defer catalog.Close()
+
+	_, err = catalog.CreateDatabase("testdb")
+	if err != nil {
+		log.Fatalf("error creating database: %v", err)
+	}
+
+	db, err := catalog.GetDatabase("testdb")
+	if err != nil {
 		log.Fatalf("error opening database: %v", err)
 	}
-	defer db.Close()
 
-	schema, err := db.GetSchema("public")
+	schema, err := db.CreateSchema("public")
 	if err != nil {
-		log.Fatalf("error getting schema: %v", err)
+		log.Fatalf("error creating schema: %v", err)
 	}
 
-	sc := entity.NewSchema()
-	sc.AddField(catalog.NewFieldString("city", 100))
-	sc.AddField(catalog.NewFieldFloat64("temperature"))
-
-	table, err := schema.CreateTable("temperatures", sc)
+	table, err := schema.CreateTable("temperatures", &storage.TableConfig{
+		Fields: []storage.FieldMeta{
+			{
+				Name:   "city",
+				Type:   types.StringType,
+				Length: 100,
+			},
+			{
+				Name:   "temperature",
+				Type:   types.Float64Type,
+				Length: 8,
+			},
+		},
+	})
 	if err != nil {
-		log.Fatalf("error creating table: %v", err)
+		log.Println("table already exists, using existing table")
+		table, err = schema.GetTable("temperatures")
+		if err != nil {
+			log.Fatalf("error getting table: %v", err)
+		}
+
+		executor := executor.New(catalog)
+		stmt, err := statement.NewTruncateTableStatement("testdb", "public", "temperatures")
+		if err != nil {
+			log.Fatalf("error creating truncate statement: %v", err)
+		}
+		if _, err := executor.Execute(context.Background(), stmt); err != nil {
+			log.Fatalf("error executing truncate statement: %v", err)
+		}
 	}
 
 	table.LockImport()
 	defer table.UnlockImport()
 
 	stats := &ImportStats{startTime: startTime, lastTime: startTime}
-	if err := importFileConcurrent(filePath, table, stats); err != nil {
+	if err := importFileConcurrent(filePath, catalog, stats); err != nil {
 		log.Fatalf("import failed: %v", err)
 	}
 
-	if err := table.BufData.Sync(); err != nil {
-		log.Fatalf("syncing data buffer: %v", err)
-	}
-
-	if err := table.BufMeta.Sync(); err != nil {
-		log.Fatalf("syncing meta buffer: %v", err)
-	}
-	if err := table.SaveStats(); err != nil {
-		log.Fatalf("syncing stats buffer: %v", err)
-	}
-
-	//table.BufData.DisableWriteMode()
-	//table.BufMeta.DisableWriteMode()
-
 	showFinalStats(stats)
 }
-func importFileConcurrent(filePath string, table *catalog.Table, stats *ImportStats) error {
+
+func importFileConcurrent(filePath string, catalog *catalog.Catalog, stats *ImportStats) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
@@ -112,7 +132,11 @@ func importFileConcurrent(filePath string, table *catalog.Table, stats *ImportSt
 	if err != nil {
 		return fmt.Errorf("mmap failed: %w", err)
 	}
-	defer unix.Munmap(data)
+	defer func() {
+		if err := unix.Munmap(data); err != nil {
+			log.Printf("warning: error unmapping file: %v", err)
+		}
+	}()
 
 	numWorkers := runtime.NumCPU()
 	if numWorkers > maxWorkers {
@@ -122,46 +146,55 @@ func importFileConcurrent(filePath string, table *catalog.Table, stats *ImportSt
 	lines := make(chan []byte, numWorkers*2)
 	errors := make(chan error, numWorkers)
 	done := make(chan struct{})
+	var hasErrors atomic.Bool
 
 	var workersWg sync.WaitGroup
 	var tickerWg sync.WaitGroup
 
+	// Start worker goroutines
 	for i := 0; i < numWorkers; i++ {
 		workersWg.Add(1)
 		go func() {
 			defer workersWg.Done()
-			var batch []*record.Row
+			var batch []map[string]interface{}
+			executor := executor.New(catalog)
+
 			for line := range lines {
-				row, err := parseLine(table, line)
+				row, err := parseLine(line)
 				if err != nil {
 					atomic.AddInt64(&stats.failedRows, 1)
 					continue
 				}
 				batch = append(batch, row)
+
 				if len(batch) >= batchSize {
-					if err := executor.Import(table, batch...); err != nil {
-						atomic.AddInt64(&stats.failedRows, int64(len(batch)))
-					} else {
-						atomic.AddInt64(&stats.processedRows, int64(len(batch)))
+					if err := processBatch(executor, batch, stats); err != nil {
+						errors <- err
+						hasErrors.Store(true)
+						return
 					}
+
 					batch = batch[:0]
 				}
 			}
-			if len(batch) > 0 {
-				if err := executor.Import(table, batch...); err != nil {
-					atomic.AddInt64(&stats.failedRows, int64(len(batch)))
-				} else {
-					atomic.AddInt64(&stats.processedRows, int64(len(batch)))
+
+			// Process remaining batch
+			if len(batch) > 0 && !hasErrors.Load() {
+				if err := processBatch(executor, batch, stats); err != nil {
+					errors <- err
+					hasErrors.Store(true)
 				}
 			}
 		}()
 	}
 
+	// Start progress reporter
 	tickerWg.Add(1)
 	go func() {
 		defer tickerWg.Done()
 		ticker := time.NewTicker(progressInterval)
 		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ticker.C:
@@ -173,27 +206,34 @@ func importFileConcurrent(filePath string, table *catalog.Table, stats *ImportSt
 		}
 	}()
 
+	// Start line reader
 	go func() {
+		defer close(lines)
 		lineStart := 0
-		for lineStart < len(data) {
+		for lineStart < len(data) && !hasErrors.Load() {
 			lineEnd := bytes.IndexByte(data[lineStart:], delimiter)
 			if lineEnd == -1 {
 				break
 			}
 			line := data[lineStart : lineStart+lineEnd]
-			lines <- line
-			lineStart += lineEnd + 1
-			atomic.AddInt64(&stats.bytesProcessed, int64(lineEnd+1))
+			select {
+			case lines <- line:
+				lineStart += lineEnd + 1
+				atomic.AddInt64(&stats.bytesProcessed, int64(lineEnd+1))
+			case <-done:
+				return
+			}
 		}
-		close(lines)
 	}()
 
+	// Wait for workers to finish and close channels
 	go func() {
 		workersWg.Wait()
 		close(errors)
 		close(done)
 	}()
 
+	// Check for errors
 	for err := range errors {
 		if err != nil {
 			return err
@@ -204,26 +244,35 @@ func importFileConcurrent(filePath string, table *catalog.Table, stats *ImportSt
 	return nil
 }
 
-func parseLine(table *catalog.Table, line []byte) (*record.Row, error) {
+func processBatch(executor executor.Executor, batch []map[string]interface{}, stats *ImportStats) error {
+	stmt, err := statement.NewImportStatement("testdb", "public", "temperatures", batch)
+	if err != nil {
+		return fmt.Errorf("creating import statement: %w", err)
+	}
+
+	if _, err := executor.Execute(context.Background(), stmt); err != nil {
+		atomic.AddInt64(&stats.failedRows, int64(len(batch)))
+		return fmt.Errorf("executing import: %w", err)
+	}
+
+	atomic.AddInt64(&stats.processedRows, int64(len(batch)))
+	return nil
+}
+
+func parseLine(line []byte) (map[string]interface{}, error) {
 	parts := bytes.Split(line, []byte{separator})
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid format")
 	}
 
-	row := table.NewRow()
-
-	if err := row.Data.SetValue("city", string(parts[0])); err != nil {
-		return nil, err
-	}
+	row := make(map[string]interface{})
+	row["city"] = string(parts[0])
 
 	temp, err := strconv.ParseFloat(string(parts[1]), 64)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid temperature value: %w", err)
 	}
-
-	if err := row.Data.SetValue("temperature", temp); err != nil {
-		return nil, err
-	}
+	row["temperature"] = temp
 
 	return row, nil
 }
@@ -259,8 +308,8 @@ func reportProgress(stats *ImportStats) {
 		processedMB,
 		totalMB,
 		stats.speed,
-		stats.processedRows,
-		stats.failedRows,
+		atomic.LoadInt64(&stats.processedRows),
+		atomic.LoadInt64(&stats.failedRows),
 		formatDuration(time.Duration(elapsedTotal)*time.Second),
 		formatDuration(time.Duration(remaining)*time.Second))
 }

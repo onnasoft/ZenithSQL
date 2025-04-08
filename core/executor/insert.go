@@ -10,49 +10,31 @@ import (
 )
 
 func (e *DefaultExecutor) executeInsert(ctx context.Context, stmt *statement.InsertStatement) (any, error) {
-	database, err := e.catalog.GetDatabase(stmt.Database)
+	table, err := e.catalog.GetTable(stmt.Database, stmt.Schema, stmt.TableName)
 	if err != nil {
 		return nil, err
 	}
 
-	schema, err := database.GetSchema(stmt.Schema)
+	table.LockInsert()
+	defer table.UnlockInsert()
+
+	writer, err := insert(ctx, table, stmt.Values...)
 	if err != nil {
 		return nil, err
 	}
+	defer writer.Close()
 
-	table, err := schema.GetTable(stmt.TableName)
-	if err != nil {
+	if err := table.UpdateRowCount(table.RowCount() + int64(len(stmt.Values))); err != nil {
+		writer.Rollback()
 		return nil, err
 	}
 
-	if err := Insert(ctx, table, stmt.Values...); err != nil {
+	if err := writer.Commit(); err != nil {
+		writer.Rollback()
 		return nil, err
 	}
 
 	return nil, nil
-}
-
-func Insert(ctx context.Context, table *catalog.Table, values ...map[string]interface{}) error {
-	table.LockInsert()
-	defer table.UnlockInsert()
-
-	writer, err := insert(ctx, table, values...)
-	if err != nil {
-		return err
-	}
-	defer writer.Close()
-
-	if err := writer.Commit(); err != nil {
-		writer.Rollback()
-		return err
-	}
-
-	if err := table.UpdateRowCount(table.RowCount() + int64(len(values))); err != nil {
-		writer.Rollback()
-		return err
-	}
-
-	return nil
 }
 
 func insert(ctx context.Context, table *catalog.Table, values ...map[string]interface{}) (storage.Writer, error) {

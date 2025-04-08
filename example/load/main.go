@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/io/protocol"
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/io/transport"
 	"github.com/onnasoft/ZenithSQL/net/messageclient"
@@ -41,16 +42,16 @@ func main() {
 		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,
-		OnMessage: func(conn *network.ZenithConnection, message *transport.Message) {
-			response, _ := message.DeserializeBody()
-			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(response.Protocol()))
-			msg.Header.MessageID = message.Header.MessageID
-			msg.Header.MessageType = message.Header.MessageType
+		OnRequest: func(conn *network.ZenithConnection, header *transport.MessageHeader, message statement.Statement) {
+			msg, _ := transport.NewResponseMessage(header, statement.NewEmptyStatement(header.MessageType))
 
 			_, err := conn.Write(msg.ToBytes())
 			if err != nil {
 				logger.Info("Failed to send response:", err)
 			}
+		},
+		OnResponse: func(conn *network.ZenithConnection, header *transport.MessageHeader, message response.Response) {
+			logger.Info("Received response:", message)
 		},
 		OnConnection: func(conn *network.ZenithConnection, stmt *statement.JoinClusterStatement) {
 			logger.Info("New connection from ", conn.RemoteAddr(), stmt.Tags)

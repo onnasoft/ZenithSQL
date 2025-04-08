@@ -8,9 +8,8 @@ import (
 )
 
 // ReaderFunc es el tipo de función que lee datos en una referencia
-type ReaderFunc func([]byte, interface{}) error
 
-var ReaderTypes = map[DataType]ReaderFunc{
+var ReaderTypes = map[DataType]func([]byte, interface{}) error{
 	Int8Type: func(data []byte, out interface{}) error {
 		if len(data) < 1 {
 			return errors.New("insufficient data for Int8 (need 1 byte)")

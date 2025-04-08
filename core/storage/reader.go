@@ -4,8 +4,8 @@ package storage
 type Reader interface {
 	Next() bool
 	Values() map[string]interface{}
-	Value(field string) interface{}
-	Err() error
+	ReadValue(field string, value interface{})
+	GetValue(field string) (interface{}, error)
 	Close() error
-	Seek(offset int64) error
+	Seek(id int64) error
 }

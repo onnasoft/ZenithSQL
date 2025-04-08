@@ -83,3 +83,22 @@ func (c *Catalog) Close() error {
 	}
 	return nil
 }
+
+func (c *Catalog) GetTable(dbName, schemaName, tableName string) (*Table, error) {
+	db, err := c.GetDatabase(dbName)
+	if err != nil {
+		return nil, err
+	}
+
+	schema, err := db.GetSchema(schemaName)
+	if err != nil {
+		return nil, err
+	}
+
+	table, err := schema.GetTable(tableName)
+	if err != nil {
+		return nil, err
+	}
+
+	return table, nil
+}
