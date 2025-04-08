@@ -9,12 +9,16 @@ import (
 )
 
 type InsertStatement struct {
-	TableName string                 `msgpack:"table_name" valid:"required,alphanumunderscore"`
-	Values    map[string]interface{} `msgpack:"values" valid:"required"`
+	Database  string                   `valid:"required,alphanumunderscore" msgpack:"database"`
+	Schema    string                   `valid:"required,alphanumunderscore" msgpack:"schema"`
+	TableName string                   `valid:"required,alphanumunderscore" msgpack:"table_name"`
+	Values    []map[string]interface{} `msgpack:"values"`
 }
 
-func NewInsertStatement(tableName string, values map[string]interface{}) (*InsertStatement, error) {
+func NewInsertStatement(database, schema, tableName string, values []map[string]interface{}) (*InsertStatement, error) {
 	stmt := &InsertStatement{
+		Database:  database,
+		Schema:    schema,
 		TableName: tableName,
 		Values:    values,
 	}

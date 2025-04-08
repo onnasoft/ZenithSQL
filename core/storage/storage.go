@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/onnasoft/ZenithSQL/model/types"
 )
@@ -42,11 +44,8 @@ func (s *StorageStats) UpdateTotalRows(count int64) {
 	s.TotalRows += count
 }
 
-func (s *StorageStats) UpdateLastModified() {
-	s.LastModified = time.Now()
-}
-
 func (s *StorageStats) SaveToFile(filePath string) error {
+	s.LastModified = time.Now()
 	temp := storageStats{
 		TotalRows:    s.TotalRows,
 		LastModified: s.LastModified.Unix(),
@@ -67,6 +66,7 @@ func (s *StorageStats) SaveToFile(filePath string) error {
 
 func (s *StorageStats) LoadFromFile(filePath string) error {
 	temp := storageStats{}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -77,8 +77,9 @@ func (s *StorageStats) LoadFromFile(filePath string) error {
 		return err
 	}
 
-	s.TotalRows = temp.TotalRows
-	s.LastModified = time.Unix(temp.LastModified, 0)
+	atomic.StoreInt64(&s.TotalRows, temp.TotalRows)
+	lastModified := time.Unix(temp.LastModified, 0)
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&s.LastModified)), unsafe.Pointer(&lastModified))
 
 	return nil
 }

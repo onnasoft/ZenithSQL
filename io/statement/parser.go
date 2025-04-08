@@ -1,12 +1,13 @@
 package statement
 
 import (
-	"github.com/onnasoft/ZenithSQL/io/dto"
 	"github.com/onnasoft/ZenithSQL/io/protocol"
 )
 
 type Statement interface {
-	dto.Dto
+	Protocol() protocol.MessageType
+	ToBytes() ([]byte, error)
+	FromBytes(data []byte) error
 }
 
 type statementConstructor func() Statement

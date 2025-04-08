@@ -1,12 +1,10 @@
 package storage
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 const (
@@ -15,8 +13,8 @@ const (
 )
 
 type TableConfig struct {
-	Fields []FieldMeta  `json:"fields"`
-	Stats  StorageStats `json:"-"`
+	Fields []FieldMeta   `json:"fields"`
+	Stats  *StorageStats `json:"-"`
 }
 
 type ConfigManager struct {
@@ -50,19 +48,11 @@ func (cm *ConfigManager) SaveTableConfig(tableName string, config *TableConfig) 
 		return err
 	}
 
-	// Crear stats.bin vacío inicial
+	if config.Stats == nil {
+		config.Stats = &StorageStats{}
+	}
 	statsPath := filepath.Join(tablePath, statsFileName)
-	file, err := os.Create(statsPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	temp := storageStats{
-		TotalRows:    0,
-		LastModified: time.Now().Unix(),
-	}
-	if err := binary.Write(file, binary.LittleEndian, temp); err != nil {
+	if err := config.Stats.SaveToFile(statsPath); err != nil {
 		return err
 	}
 
@@ -82,6 +72,13 @@ func (cm *ConfigManager) LoadTableConfig(tableName string) (TableConfig, error) 
 	}
 
 	if err := json.Unmarshal(data, &config); err != nil {
+		return config, err
+	}
+
+	config.Stats = &StorageStats{}
+
+	statsPath := filepath.Join(cm.basePath, tableName, statsFileName)
+	if err := config.Stats.LoadFromFile(statsPath); err != nil {
 		return config, err
 	}
 
@@ -140,7 +137,7 @@ func (cm *ConfigManager) UpdateStats(tableName string, stats StorageStats) error
 	return nil
 }
 
-func (cm *ConfigManager) LoadStats(tableName string) (StorageStats, error) {
+func (cm *ConfigManager) LoadStats(tableName string) (*StorageStats, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
@@ -149,8 +146,8 @@ func (cm *ConfigManager) LoadStats(tableName string) (StorageStats, error) {
 	statsPath := filepath.Join(tablePath, statsFileName)
 
 	if err := stats.LoadFromFile(statsPath); err != nil {
-		return stats, err
+		return &stats, err
 	}
 
-	return stats, nil
+	return &stats, nil
 }

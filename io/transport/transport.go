@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/onnasoft/ZenithSQL/io/dto"
 	"github.com/onnasoft/ZenithSQL/io/protocol"
 	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
@@ -129,7 +128,7 @@ func (m *Message) ReadFrom(conn net.Conn) error {
 	return err
 }
 
-func NewResponseMessage(request *Message, stmt statement.Statement) (*Message, error) {
+func NewResponseMessage(header *MessageHeader, stmt statement.Statement) (*Message, error) {
 	body, err := stmt.ToBytes()
 	if err != nil {
 		return nil, err
@@ -137,8 +136,8 @@ func NewResponseMessage(request *Message, stmt statement.Statement) (*Message, e
 	return &Message{
 		Header: &MessageHeader{
 			StartMarker: StartMarker,
-			MessageID:   request.Header.MessageID,
-			MessageType: request.Header.MessageType,
+			MessageID:   header.MessageID,
+			MessageType: header.MessageType,
 			MessageFlag: ResponseMessage,
 			Timestamp:   uint32(time.Now().UnixNano() / 1e6),
 			BodySize:    uint32(len(body)),
@@ -171,10 +170,28 @@ func (m *Message) FromBytes(bytes []byte) error {
 	return nil
 }
 
-func (m *Message) DeserializeBody() (dto.Dto, error) {
+func (m *Message) ToStatement() (statement.Statement, error) {
 	if m.Header.MessageFlag != RequestMessage {
-		return response.Deserialize(m.Header.MessageType, m.Body)
+		return nil, fmt.Errorf("message is not a request")
 	}
 
-	return statement.Deserialize(m.Header.MessageType, m.Body)
+	stmt, err := statement.Deserialize(m.Header.MessageType, m.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize statement: %w", err)
+	}
+
+	return stmt, nil
+}
+
+func (m *Message) ToResponse() (response.Response, error) {
+	if m.Header.MessageFlag != ResponseMessage {
+		return nil, fmt.Errorf("message is not a response")
+	}
+
+	resp, err := response.Deserialize(m.Header.MessageType, m.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize response: %w", err)
+	}
+
+	return resp, nil
 }

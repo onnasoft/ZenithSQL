@@ -115,6 +115,10 @@ func (s *Schema) CreateTable(name string, config *storage.TableConfig) (*Table, 
 
 	config.Fields = fields
 
+	if _, err := s.ConfigManager.LoadStats(name); err == nil {
+		fmt.Println("Table already exists@@@", err)
+		return nil, fmt.Errorf("table %s already exists", name)
+	}
 	s.ConfigManager.SaveTableConfig(name, config)
 
 	t, err := OpenTable(&TableConfig{
@@ -126,7 +130,6 @@ func (s *Schema) CreateTable(name string, config *storage.TableConfig) (*Table, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create table: %v", err)
 	}
-
 	if err := t.Initialize(context.Background()); err != nil {
 		return nil, fmt.Errorf("failed to initialize table: %v", err)
 	}
@@ -152,4 +155,25 @@ func (s *Schema) OpenTable(name string) (*Table, error) {
 	}
 	s.Tables[name] = t
 	return t, nil
+}
+
+func (s *Schema) DropTable(name string) error {
+	t, err := s.GetTable(name)
+	if err != nil {
+		return err
+	}
+
+	if err := t.Close(); err != nil {
+		return fmt.Errorf("failed to close table: %v", err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(s.Path, "tables", name)); err != nil {
+		return fmt.Errorf("failed to remove table directory: %v", err)
+	}
+
+	fmt.Println("Table directory removed:", filepath.Join(s.Path, "tables", name))
+
+	delete(s.Tables, name)
+
+	return nil
 }

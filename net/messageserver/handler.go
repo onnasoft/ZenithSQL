@@ -50,8 +50,30 @@ func (s *MessageServer) handler(conn *network.ZenithConnection, message *transpo
 func (s *MessageServer) handlerMessage(conn *network.ZenithConnection, message *transport.Message) {
 	defer utils.RecoverFromPanic("handlerMessage", s.logger)
 
-	if s.onMessage != nil {
-		s.onMessage(conn, message)
+	if message.Header.MessageFlag == transport.RequestMessage {
+		if s.onRequest != nil {
+			stmt, err := message.ToStatement()
+			if err != nil {
+				s.logger.Warn("Failed to parse message: ", err)
+				response, _ := transport.NewResponseMessage(message.Header, response.NewErrorResponse(err.Error()))
+				conn.Write(response.ToBytes())
+				return
+			}
+			s.onRequest(conn, message.Header, stmt)
+		}
+		return
+	}
+
+	if message.Header.MessageFlag == transport.ResponseMessage {
+		if s.onResponse != nil {
+			response, err := message.ToResponse()
+			if err != nil {
+				s.logger.Warn("Failed to parse response: ", err)
+				return
+			}
+
+			s.onResponse(conn, message.Header, response)
+		}
 		return
 	}
 }
@@ -63,7 +85,7 @@ func (s *MessageServer) handlePing(conn net.Conn, message *transport.Message) bo
 		return false
 	}
 
-	response, _ := transport.NewResponseMessage(message, response.NewPongResponse())
+	response, _ := transport.NewResponseMessage(message.Header, response.NewPongResponse())
 	conn.Write(response.ToBytes())
 
 	return true
@@ -94,7 +116,7 @@ func (s *MessageServer) authenticateConnection(conn net.Conn) (statement.Stateme
 		return nil, false
 	}
 
-	response, _ := transport.NewResponseMessage(message, response.NewLoginResponse(true, "Login successful"))
+	response, _ := transport.NewResponseMessage(message.Header, response.NewLoginResponse(true, "Login successful"))
 	_, err := conn.Write(response.ToBytes())
 	if err != nil {
 		s.logger.Warn("Failed to send login response to:", conn.RemoteAddr())

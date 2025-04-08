@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/io/protocol"
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/io/transport"
 	"github.com/onnasoft/ZenithSQL/net/messageclient"
@@ -29,8 +30,11 @@ func main() {
 		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,
-		OnMessage: func(conn *network.ZenithConnection, message *transport.Message) {
-			logger.Infof("Received message on server from %s: %s", conn.RemoteAddr(), message.Header.MessageType)
+		OnRequest: func(zc *network.ZenithConnection, mh *transport.MessageHeader, s statement.Statement) {
+			logger.Info("Received message from ", zc.RemoteAddr(), mh.MessageType, s)
+		},
+		OnResponse: func(zc *network.ZenithConnection, mh *transport.MessageHeader, s response.Response) {
+			logger.Info("Sending response to ", zc.RemoteAddr(), mh.MessageType, s)
 		},
 		OnConnection: func(conn *network.ZenithConnection, stmt *statement.JoinClusterStatement) {
 			logger.Info("New connection from ", conn.RemoteAddr(), stmt.Tags)
@@ -62,7 +66,7 @@ func main() {
 			logger.Infof("Received message on client from %s: %s", conn.RemoteAddr(), message.Header.MessageType)
 
 			stmt := statement.NewEmptyStatement(protocol.Welcome)
-			response, _ := transport.NewResponseMessage(message, stmt)
+			response, _ := transport.NewResponseMessage(message.Header, stmt)
 			_, err := conn.Write(response.ToBytes())
 			if err != nil {
 				logger.Info("Failed to send response:", err)

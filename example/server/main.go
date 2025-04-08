@@ -28,11 +28,8 @@ func main() {
 		Address: ":8081",
 		Logger:  logger,
 		Timeout: 3 * time.Second,
-		OnMessage: func(conn *network.ZenithConnection, message *transport.Message) {
-			response, _ := message.DeserializeBody()
-			msg, _ := transport.NewResponseMessage(message, statement.NewEmptyStatement(response.Protocol()))
-			msg.Header.MessageID = message.Header.MessageID
-			msg.Header.MessageType = message.Header.MessageType
+		OnRequest: func(conn *network.ZenithConnection, header *transport.MessageHeader, stmt statement.Statement) {
+			msg, _ := transport.NewResponseMessage(header, statement.NewEmptyStatement(stmt.Protocol()))
 
 			_, err := conn.Write(msg.ToBytes())
 			if err != nil {

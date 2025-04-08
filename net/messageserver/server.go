@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/utils"
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/io/transport"
 	"github.com/onnasoft/ZenithSQL/net/network"
@@ -26,7 +27,8 @@ type MessageServer struct {
 
 	onListening  func()
 	onConnection func(*network.ZenithConnection, *statement.JoinClusterStatement)
-	onMessage    func(*network.ZenithConnection, *transport.Message)
+	onRequest    func(*network.ZenithConnection, *transport.MessageHeader, statement.Statement)
+	onResponse   func(*network.ZenithConnection, *transport.MessageHeader, response.Response)
 	onShutdown   func()
 }
 
@@ -50,7 +52,8 @@ func NewMessageServer(cfg *ServerConfig) *MessageServer {
 
 		onListening:  cfg.OnListening,
 		onConnection: cfg.OnConnection,
-		onMessage:    cfg.OnMessage,
+		onRequest:    cfg.OnRequest,
+		onResponse:   cfg.OnResponse,
 		onShutdown:   cfg.OnShutdown,
 	}
 

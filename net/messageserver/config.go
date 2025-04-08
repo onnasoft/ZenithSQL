@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/io/transport"
 	"github.com/onnasoft/ZenithSQL/net/network"
@@ -21,7 +22,8 @@ type ServerConfig struct {
 
 	OnListening  func()
 	OnConnection func(*network.ZenithConnection, *statement.JoinClusterStatement)
-	OnMessage    func(*network.ZenithConnection, *transport.Message)
+	OnRequest    func(*network.ZenithConnection, *transport.MessageHeader, statement.Statement)
+	OnResponse   func(*network.ZenithConnection, *transport.MessageHeader, response.Response)
 	OnShutdown   func()
 }
 

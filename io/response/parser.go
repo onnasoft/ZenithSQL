@@ -1,14 +1,16 @@
 package response
 
 import (
-	"github.com/onnasoft/ZenithSQL/io/dto"
 	"github.com/onnasoft/ZenithSQL/io/protocol"
 )
 
 type Response interface {
 	IsSuccess() bool
 	GetMessage() string
-	dto.Dto
+	Protocol() protocol.MessageType
+	ToBytes() ([]byte, error)
+	FromBytes(data []byte) error
+	String() string
 }
 
 type responseConstructor func() Response

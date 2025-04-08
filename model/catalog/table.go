@@ -29,7 +29,7 @@ func OpenTable(config *TableConfig) (*Table, error) {
 	storage := columnstorage.NewColumnStorage(&columnstorage.ColumnStorageConfig{
 		BasePath:     filepath.Join(config.Path, config.Name),
 		Fields:       config.StorageConfig.Fields,
-		StorageStats: &config.StorageConfig.Stats,
+		StorageStats: config.StorageConfig.Stats,
 		Logger:       config.Logger,
 	})
 

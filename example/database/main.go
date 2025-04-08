@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/onnasoft/ZenithSQL/core/executor"
 	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/onnasoft/ZenithSQL/model/types"
 	"github.com/sirupsen/logrus"
@@ -14,27 +16,44 @@ import (
 var log = logrus.New()
 
 func main() {
-	db, table := setupDatabaseAndTable()
-	defer db.Close()
+	catalog := setupDatabaseAndTable()
+	defer catalog.Close()
 	users := []map[string]interface{}{
 		{"name": "Javier Xar", "email": "xarjavier@gmail.com"},
 		{"name": "Jhon Doe", "email": "jhondoe@gmail.com"},
 	}
-	insertRecords(table, users)
-	retrieveAndLogRecords(table)
+
+	insertRecords(catalog, users)
+	//retrieveAndLogRecords(table)
 
 }
 
-func setupDatabaseAndTable() (*catalog.Database, *catalog.Table) {
-	db, err := catalog.OpenDatabase(&catalog.DatabaseConfig{
-		Name:   "testdb",
+func setupDatabaseAndTable() *catalog.Catalog {
+	catalog, err := catalog.OpenCatalog(&catalog.CatalogConfig{
 		Path:   "./data",
 		Logger: logrus.New(),
 	})
 	if err != nil {
+		log.Fatalf("error opening catalog: %v", err)
+	}
+	defer catalog.Close()
+
+	db, err := catalog.CreateDatabase("testdb")
+	if err != nil {
+		log.Fatalf("error creating database: %v", err)
+	}
+	defer db.Close()
+
+	db, err = catalog.GetDatabase("testdb")
+	if err != nil {
 		log.Fatalf("error opening database: %v", err)
 	}
 	defer db.Close()
+
+	_, err = db.CreateSchema("public")
+	if err != nil {
+		log.Fatalf("error creating schema: %v", err)
+	}
 
 	schema, err := db.GetSchema("public")
 	if err != nil {
@@ -70,19 +89,42 @@ func setupDatabaseAndTable() (*catalog.Database, *catalog.Table) {
 	}
 
 	// Guardar configuración
-	table, err := schema.CreateTable("users", tableConfig)
-	if err != nil {
-		log.Fatalf("error creating table: %v", err)
+	if _, err = schema.CreateTable("users", tableConfig); err == nil {
+		err = schema.DropTable("users")
+		if err != nil {
+			log.Fatalf("error dropping table: %v", err)
+		}
+		log.Info("Table dropped successfully")
 	}
+
+	if _, err = schema.CreateTable("users", tableConfig); err != nil {
+		log.Fatal("Error creating table: ", err)
+	}
+
+	log.Info("Table created successfully")
+	table, err := schema.GetTable("users")
+	if err != nil {
+		log.Fatalf("error getting table: %v", err)
+	}
+
 	fmt.Println("Table created:", table.Name)
 
-	return db, table
+	return catalog
 }
 
-func insertRecords(table *catalog.Table, users []map[string]interface{}) {
-	if err := executor.Insert(table, users...); err != nil {
+func insertRecords(catalog *catalog.Catalog, users []map[string]interface{}) error {
+	executor := executor.New(catalog)
+
+	stmt, err := statement.NewInsertStatement("testdb", "public", "users", users)
+	if err != nil {
+		log.Fatal("Error creating insert statement: ", err)
+	}
+
+	if _, err := executor.Execute(context.Background(), stmt); err != nil {
 		log.Fatal("Error inserting records: ", err)
 	}
+
+	return nil
 }
 
 func retrieveAndLogRecords(table *catalog.Table) {

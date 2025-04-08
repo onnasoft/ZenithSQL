@@ -22,22 +22,22 @@ type DatabaseConfig struct {
 }
 
 func NewDatabase(config *DatabaseConfig) (*Database, error) {
-	fullPath := filepath.Join(config.Path, config.Name)
-	if err := os.MkdirAll(fullPath, 0755); err != nil {
+	if err := os.MkdirAll(config.Path, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(fullPath, "schemas"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(config.Path, "schemas"), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create system directory: %v", err)
 	}
 	return OpenDatabase(config)
 }
 
 func OpenDatabase(config *DatabaseConfig) (*Database, error) {
-	fullPath := filepath.Join(config.Path, config.Name, "schemas")
+	fullPath := filepath.Join(config.Path, "schemas")
+	fmt.Println("Opening database at path:", fullPath)
 
 	schemasDir, err := os.ReadDir(fullPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while reading the schemas directory: %v", err)
 	}
 
 	schemas := make(map[string]*Schema)
@@ -60,7 +60,7 @@ func OpenDatabase(config *DatabaseConfig) (*Database, error) {
 
 	return &Database{
 		Name:    config.Name,
-		Path:    fullPath,
+		Path:    config.Path,
 		Schemas: schemas,
 		logger:  config.Logger,
 	}, nil
