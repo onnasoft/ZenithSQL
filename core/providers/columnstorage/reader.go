@@ -73,7 +73,7 @@ func (r *ColumnReader) Values() map[string]interface{} {
 			continue
 		}
 
-		values[name] = col.parser(data[1:])
+		values[name] = col.DataType.Parse(data[1:])
 	}
 	return values
 }
@@ -97,7 +97,7 @@ func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{})
 		return nil
 	}
 
-	return colData.read(data[1:], value)
+	return colData.DataType.Read(data[1:], value)
 }
 
 func (r *ColumnReader) ReadValue(field string, value interface{}) error {
@@ -114,12 +114,13 @@ func (r *ColumnReader) ReadValue(field string, value interface{}) error {
 	}
 
 	data := col.data[offset : offset+int64(recordLength)]
+	fmt.Println("data", data, col.Length, offset, r.current)
 
 	if data[0] != 1 {
 		return nil
 	}
 
-	return col.read(data[1:], value)
+	return col.DataType.Read(data[1:], value)
 }
 
 func (r *ColumnReader) GetValue(field string) (interface{}, error) {
@@ -136,7 +137,7 @@ func (r *ColumnReader) GetValue(field string) (interface{}, error) {
 		return nil, nil
 	}
 
-	return col.parser(data[1:]), nil
+	return col.DataType.Parse(data[1:]), nil
 }
 
 func (r *ColumnReader) Close() error {

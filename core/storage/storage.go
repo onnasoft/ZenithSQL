@@ -17,7 +17,7 @@ import (
 
 type FieldMeta struct {
 	Name       string          `json:"name"`
-	Type       types.DataType  `json:"type"`
+	Type       types.Types     `json:"type"`
 	Length     int             `json:"length"`
 	Required   bool            `json:"required,omitempty"`
 	Validators []ValidatorInfo `json:"validators,omitempty"`

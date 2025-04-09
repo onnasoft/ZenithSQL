@@ -34,7 +34,7 @@ func main() {
 		Fields: []storage.FieldMeta{
 			{
 				Name:   "name",
-				Type:   types.StringType,
+				Type:   types.String,
 				Length: 100,
 				Validators: []storage.ValidatorInfo{
 					{

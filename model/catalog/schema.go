@@ -89,26 +89,26 @@ func (s *Schema) CreateTable(name string, config *storage.TableConfig) (*Table, 
 	fields := make([]storage.FieldMeta, 1, len(config.Fields)+1)
 	fields[0] = storage.FieldMeta{
 		Name:     "id",
-		Type:     types.Int64Type,
+		Type:     types.Int64,
 		Required: true,
 		Length:   8,
 	}
 	fields = append(fields, config.Fields...)
 	fields = append(fields, storage.FieldMeta{
 		Name:     "created_at",
-		Type:     types.TimestampType,
+		Type:     types.Timestamp,
 		Required: true,
 		Length:   8,
 	})
 	fields = append(fields, storage.FieldMeta{
 		Name:     "updated_at",
-		Type:     types.TimestampType,
+		Type:     types.Timestamp,
 		Required: true,
 		Length:   8,
 	})
 	fields = append(fields, storage.FieldMeta{
 		Name:     "deleted_at",
-		Type:     types.TimestampType,
+		Type:     types.Timestamp,
 		Required: false,
 		Length:   8,
 	})

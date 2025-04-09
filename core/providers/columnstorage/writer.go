@@ -64,7 +64,7 @@ func (w *ColumnWriter) Write(values map[string]interface{}) error {
 		if !ok {
 			return fmt.Errorf(errFieldNotFound, name)
 		}
-		if err := col.isValid(value); err != nil {
+		if err := col.DataType.Valid(value); err != nil {
 			return fmt.Errorf(errFieldInvalid, name, err)
 		}
 	}
@@ -104,7 +104,7 @@ func (w *ColumnWriter) writeFieldInternal(id int64, name string, value interface
 
 	data[statusByteOffset] = 1
 
-	if err := col.write(data[valueByteOffset:], value); err != nil {
+	if err := col.DataType.Write(data[valueByteOffset:], value); err != nil {
 		return fmt.Errorf("error writing value for column %s: %w", name, err)
 	}
 	data[col.Length+1] = '\n'

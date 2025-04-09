@@ -77,12 +77,12 @@ func main() {
 		Fields: []storage.FieldMeta{
 			{
 				Name:   "city",
-				Type:   types.StringType,
+				Type:   types.String,
 				Length: 100,
 			},
 			{
 				Name:   "temperature",
-				Type:   types.Float64Type,
+				Type:   types.Float64,
 				Length: 8,
 			},
 		},

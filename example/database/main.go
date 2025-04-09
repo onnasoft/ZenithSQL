@@ -78,7 +78,7 @@ func setupDatabaseAndTable() *catalog.Catalog {
 		Fields: []storage.FieldMeta{
 			{
 				Name:   "name",
-				Type:   types.StringType,
+				Type:   types.String,
 				Length: 100,
 				Validators: []storage.ValidatorInfo{
 					{
@@ -89,7 +89,7 @@ func setupDatabaseAndTable() *catalog.Catalog {
 			},
 			{
 				Name:   "email",
-				Type:   types.StringType,
+				Type:   types.String,
 				Length: 100,
 				Validators: []storage.ValidatorInfo{
 					{
@@ -100,7 +100,7 @@ func setupDatabaseAndTable() *catalog.Catalog {
 			},
 			{
 				Name:       "avg",
-				Type:       types.Float64Type,
+				Type:       types.Float64,
 				Length:     8,
 				Validators: []storage.ValidatorInfo{},
 			},
@@ -136,8 +136,4 @@ func insertRecords(catalog *catalog.Catalog, users []map[string]interface{}) err
 	}
 
 	return nil
-}
-
-func retrieveAndLogRecords(table *catalog.Table) {
-	fmt.Println("Retrieving records...")
 }

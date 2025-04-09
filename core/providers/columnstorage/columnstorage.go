@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/model/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -52,8 +53,10 @@ func NewColumnStorage(cfg *ColumnStorageConfig) *ColumnStorage {
 func (s *ColumnStorage) Initialize(ctx context.Context) error {
 	columns := make(map[string]*Column)
 
-	for _, meta := range s.fields {
-		col, err := NewColumn(meta.Name, meta.Type, meta.Length, meta.Required, s.BasePath)
+	for i := 0; i < len(s.fields); i++ {
+		meta := s.fields[i]
+		dataType := types.NewDataType(meta.Type)
+		col, err := NewColumn(meta.Name, dataType, meta.Length, meta.Required, s.BasePath)
 		if err != nil {
 			s.Logger.Error("Failed to create column ", err)
 			continue

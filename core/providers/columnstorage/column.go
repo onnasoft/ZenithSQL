@@ -17,31 +17,12 @@ type Column struct {
 	Length     int
 	Required   bool
 	Validators []validate.Validator
-	isValid    func(val interface{}) error
-	write      func(buffer []byte, val interface{}) error
-	read       func(data []byte, out interface{}) error
-	parser     func(b []byte) interface{}
 
 	BasePath string
 	MMapFile *buffer.MMapFile
 }
 
 func NewColumn(name string, dataType types.DataType, length int, required bool, basePath string) (*Column, error) {
-	write, err := dataType.Writer()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get writer for data type %s: %w", dataType, err)
-	}
-
-	reader, err := dataType.Reader()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get reader for data type %s: %w", dataType, err)
-	}
-
-	parser, err := dataType.Parser()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get parser for data type %s: %w", dataType, err)
-	}
-
 	effectiveLength, err := dataType.ResolveLength(length)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve length for data type %s: %w", dataType, err)
@@ -53,10 +34,6 @@ func NewColumn(name string, dataType types.DataType, length int, required bool, 
 		Length:   effectiveLength,
 		Required: required,
 		BasePath: basePath,
-		isValid:  dataType.Valid(),
-		write:    write,
-		read:     reader,
-		parser:   parser,
 	}
 
 	if err := col.init(); err != nil {
