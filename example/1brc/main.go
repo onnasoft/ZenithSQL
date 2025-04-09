@@ -8,7 +8,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/onnasoft/ZenithSQL/core/providers/columnstorage"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/sirupsen/logrus"
 )
@@ -122,18 +121,11 @@ func processDataOptimized(table *catalog.Table) float64 {
 func worker(table *catalog.Table, jobs <-chan [2]int64, results chan<- float64, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	dreader, err := table.Reader()
+	reader, err := table.Reader()
 	if err != nil {
 		log.Errorf("error creating reader: %v", err)
 	}
-	defer dreader.Close()
-
-	var ireader interface{} = dreader
-	reader, ok := ireader.(*columnstorage.ColumnReader)
-	if !ok {
-		log.Errorf("error casting reader to ColumnStorage Reader")
-		return
-	}
+	defer reader.Close()
 
 	temperatureField, ok := reader.ColumnsData()["temperature"]
 	if !ok {

@@ -11,13 +11,17 @@ type ColumnData struct {
 	data []byte
 }
 
+func (c *ColumnData) Name() string {
+	return c.Column.Name
+}
+
 type ColumnReader struct {
 	columnsData map[string]*ColumnData
 	current     int64
 	stats       *storage.StorageStats
 }
 
-func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) storage.Reader {
+func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) *ColumnReader {
 	columnsData := make(map[string]*ColumnData, len(columns))
 	for name, col := range columns {
 		columnsData[name] = &ColumnData{
@@ -27,14 +31,18 @@ func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) st
 	}
 
 	return &ColumnReader{
-		columnsData: columnsData,
 		current:     -1,
 		stats:       stats,
+		columnsData: columnsData,
 	}
 }
 
-func (r *ColumnReader) ColumnsData() map[string]*ColumnData {
-	return r.columnsData
+func (r *ColumnReader) ColumnsData() map[string]storage.ColumnData {
+	result := make(map[string]storage.ColumnData, len(r.columnsData))
+	for name, col := range r.columnsData {
+		result[name] = col
+	}
+	return result
 }
 
 func (r *ColumnReader) Next() bool {
@@ -70,20 +78,26 @@ func (r *ColumnReader) Values() map[string]interface{} {
 	return values
 }
 
-func (r *ColumnReader) ReadFieldValue(col *ColumnData, value interface{}) error {
+func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{}) error {
 	if r.current < 0 || r.current >= r.stats.TotalRows {
 		return fmt.Errorf("invalid current index: %d", r.current)
 	}
-	recordLength := col.Length + 2
+
+	colData, ok := col.(*ColumnData)
+	if !ok {
+		return fmt.Errorf("invalid column type: %T", col)
+	}
+
+	recordLength := colData.Length + 2
 	offset := r.current * int64(recordLength)
 
-	data := col.data[offset : offset+int64(recordLength)]
+	data := colData.data[offset : offset+int64(recordLength)]
 
 	if data[0] != 1 {
 		return nil
 	}
 
-	return col.read(data[1:], value)
+	return colData.read(data[1:], value)
 }
 
 func (r *ColumnReader) ReadValue(field string, value interface{}) error {
@@ -104,9 +118,6 @@ func (r *ColumnReader) ReadValue(field string, value interface{}) error {
 	if data[0] != 1 {
 		return nil
 	}
-
-	fmt.Println(data[0])
-	fmt.Println(data[1:])
 
 	return col.read(data[1:], value)
 }
