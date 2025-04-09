@@ -53,6 +53,7 @@ func insert(ctx context.Context, table *catalog.Table, values ...map[string]inte
 		default:
 		}
 
+		row["deleted_at"] = nil
 		row["created_at"] = now
 		row["updated_at"] = now
 		row["id"] = id

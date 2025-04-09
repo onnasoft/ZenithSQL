@@ -96,7 +96,13 @@ func (w *ColumnWriter) writeFieldInternal(id int64, name string, value interface
 	}
 
 	data := col.MMapFile.Data()[offset : offset+int64(recordLength)]
-	data[statusByteOffset] = 1 // Mark as set
+	if value == nil {
+		data[statusByteOffset] = 0
+		data[col.Length+1] = '\n'
+		return nil
+	}
+
+	data[statusByteOffset] = 1
 
 	if err := col.write(data[valueByteOffset:], value); err != nil {
 		return fmt.Errorf("error writing value for column %s: %w", name, err)

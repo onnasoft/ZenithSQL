@@ -24,7 +24,7 @@ import (
 const (
 	delimiter        = '\n'
 	separator        = ';'
-	batchSize        = 10000
+	batchSize        = 1_000_000
 	progressInterval = 1 * time.Second
 	maxWorkers       = 16
 )

@@ -13,6 +13,9 @@ func (e *DefaultExecutor) executeImport(ctx context.Context, stmt *statement.Imp
 		return nil, err
 	}
 
+	table.LockInsert()
+	defer table.UnlockInsert()
+
 	writer, err := insert(ctx, table, stmt.Values...)
 	if err != nil {
 		return nil, err

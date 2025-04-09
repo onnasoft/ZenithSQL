@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -16,7 +15,7 @@ import (
 
 var (
 	log       = logrus.New()
-	batchSize = int64(1000)
+	batchSize = int64(1000_000)
 )
 
 func main() {
@@ -36,24 +35,45 @@ func main() {
 		log.Fatalf("error getting table: %v", err)
 	}
 
-	fmt.Println("Total rows:", table.Stats().TotalRows)
-	totalRows := int64(1000_000_000)
-	table.Storage.UpdateRowCount(totalRows)
+	/*
+		var itable interface{} = table.Storage
 
-	reader, err := table.Reader()
-	if err != nil {
-		log.Fatalf("error creating reader: %v", err)
-	}
-	defer reader.Close()
-	if err := reader.Seek(1); err != nil {
-		log.Fatalf("error seeking: %v", err)
-	}
-	fmt.Println(reader.Values())
-	if err := reader.Seek(1000_000_00); err != nil {
-		log.Fatalf("error seeking: %v", err)
-	}
-	fmt.Println(reader.Values())
-	os.Exit(0)
+		ctable, ok := itable.(*columnstorage.ColumnStorage)
+		if !ok {
+			log.Errorf("error casting table to ColumnStorage")
+			return
+		}
+
+		temperatureField, ok := ctable.Columns()["temperature"]
+		if !ok {
+			log.Errorf("error getting temperature field from table %s", table.Name)
+			return
+		}
+
+		dreader, err := ctable.Reader()
+		if err != nil {
+			log.Errorf("error creating reader: %v", err)
+		}
+		defer dreader.Close()
+
+		var ireader interface{} = dreader
+		reader, ok := ireader.(*columnstorage.ColumnReader)
+		if !ok {
+			log.Errorf("error casting reader to ColumnStorage Reader")
+			return
+		}
+
+		id := int64(2000000)
+		reader.Seek(id)
+		var num float64
+		if err := reader.ReadFieldValue(temperatureField, &num); err != nil {
+			log.Errorf("error reading field value: %v", err)
+			return
+		}
+
+		fmt.Printf("Value at index %d: %f\n", id, num)
+		fmt.Println("values:", reader.Values())
+		os.Exit(0)*/
 
 	log.Infof("Processing table %s", table.Name)
 	totalSum := processDataOptimized(table)
@@ -64,6 +84,7 @@ func main() {
 func processDataOptimized(table *catalog.Table) float64 {
 	numWorkers := runtime.NumCPU()
 	totalRows := table.Stats().TotalRows
+	fmt.Println("Total rows:", totalRows)
 
 	jobs := make(chan [2]int64, numWorkers)
 	results := make(chan float64, numWorkers)
@@ -101,21 +122,7 @@ func processDataOptimized(table *catalog.Table) float64 {
 func worker(table *catalog.Table, jobs <-chan [2]int64, results chan<- float64, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	var itable interface{} = table.Storage
-
-	ctable, ok := itable.(*columnstorage.ColumnStorage)
-	if !ok {
-		log.Errorf("error casting table to ColumnStorage")
-		return
-	}
-
-	temperatureField, ok := ctable.Columns()["temperature"]
-	if !ok {
-		log.Errorf("error getting temperature field from table %s", table.Name)
-		return
-	}
-
-	dreader, err := ctable.Reader()
+	dreader, err := table.Reader()
 	if err != nil {
 		log.Errorf("error creating reader: %v", err)
 	}
@@ -128,6 +135,12 @@ func worker(table *catalog.Table, jobs <-chan [2]int64, results chan<- float64, 
 		return
 	}
 
+	temperatureField, ok := reader.ColumnsData()["temperature"]
+	if !ok {
+		log.Errorf("error getting temperature field from table %s", table.Name)
+		return
+	}
+
 	for job := range jobs {
 		start, end := job[0], job[1]
 		var sum float64
@@ -136,9 +149,9 @@ func worker(table *catalog.Table, jobs <-chan [2]int64, results chan<- float64, 
 		for i := start; i <= end; i++ {
 			reader.Seek(i)
 
-			reader.ReadFieldValue(temperatureField, &num)
-			if num == 0 {
-				fmt.Println("zero value found at index", i)
+			err = reader.ReadFieldValue(temperatureField, &num)
+			if err != nil {
+				log.Errorf("error reading field value: %v", err)
 				continue
 			}
 			sum += num

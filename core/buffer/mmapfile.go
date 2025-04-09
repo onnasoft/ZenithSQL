@@ -27,6 +27,16 @@ func Open(path string, initialSize, pageSize int) (*MMapFile, error) {
 		return nil, err
 	}
 
+	stats, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+
+	if stats.Size() > 0 {
+		initialSize = int(stats.Size())
+	}
+
 	// Ensure minimum size
 	if initialSize < pageSize {
 		initialSize = pageSize

@@ -2,7 +2,6 @@ package columnstorage
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -56,8 +55,7 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 	for _, meta := range s.fields {
 		col, err := NewColumn(meta.Name, meta.Type, meta.Length, meta.Required, s.BasePath)
 		if err != nil {
-			fmt.Println(meta)
-			s.Logger.WithError(err).Errorf("Failed to create column %s", meta.Name)
+			s.Logger.Error("Failed to create column ", err)
 			continue
 		}
 		columns[meta.Name] = col
@@ -101,7 +99,7 @@ func (s *ColumnStorage) Restore(ctx context.Context, reader io.Reader) error {
 }
 
 func (s *ColumnStorage) Stats() storage.StorageStats {
-	return storage.StorageStats{}
+	return *s.StorageStats
 }
 
 func (s *ColumnStorage) Compact(ctx context.Context) error {
@@ -158,13 +156,11 @@ func (s *ColumnStorage) UnlockInsert() error {
 
 func (s *ColumnStorage) LockImport() error {
 	s.importLock.Lock()
-	s.insertLock.Lock()
 	return nil
 }
 
 func (s *ColumnStorage) UnlockImport() error {
 	s.importLock.Unlock()
-	s.insertLock.Unlock()
 	return nil
 }
 

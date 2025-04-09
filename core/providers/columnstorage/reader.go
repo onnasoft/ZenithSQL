@@ -6,18 +6,35 @@ import (
 	"github.com/onnasoft/ZenithSQL/core/storage"
 )
 
+type ColumnData struct {
+	*Column
+	data []byte
+}
+
 type ColumnReader struct {
-	columns map[string]*Column
-	current int64
-	stats   *storage.StorageStats
+	columnsData map[string]*ColumnData
+	current     int64
+	stats       *storage.StorageStats
 }
 
 func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) storage.Reader {
-	return &ColumnReader{
-		columns: columns,
-		current: -1,
-		stats:   stats,
+	columnsData := make(map[string]*ColumnData, len(columns))
+	for name, col := range columns {
+		columnsData[name] = &ColumnData{
+			Column: col,
+			data:   col.MMapFile.Data(),
+		}
 	}
+
+	return &ColumnReader{
+		columnsData: columnsData,
+		current:     -1,
+		stats:       stats,
+	}
+}
+
+func (r *ColumnReader) ColumnsData() map[string]*ColumnData {
+	return r.columnsData
 }
 
 func (r *ColumnReader) Next() bool {
@@ -29,7 +46,6 @@ func (r *ColumnReader) Next() bool {
 }
 
 func (r *ColumnReader) Seek(id int64) error {
-	fmt.Println("Seek", id)
 	if id <= 0 || id > r.stats.TotalRows {
 		return fmt.Errorf("invalid id: %d", id)
 	}
@@ -38,12 +54,11 @@ func (r *ColumnReader) Seek(id int64) error {
 }
 
 func (r *ColumnReader) Values() map[string]interface{} {
-	values := make(map[string]interface{}, len(r.columns))
-	for name, col := range r.columns {
+	values := make(map[string]interface{}, len(r.columnsData))
+	for name, col := range r.columnsData {
 		recordLength := col.Length + 2
 		offset := r.current * int64(recordLength)
-		fmt.Println("Column name", name)
-		data := col.MMapFile.Data()[offset : offset+int64(recordLength)]
+		data := col.data[offset : offset+int64(recordLength-1)]
 
 		if data[0] != 1 {
 			values[name] = nil
@@ -55,56 +70,56 @@ func (r *ColumnReader) Values() map[string]interface{} {
 	return values
 }
 
-func (r *ColumnReader) ReadFieldValue(col *Column, value interface{}) {
+func (r *ColumnReader) ReadFieldValue(col *ColumnData, value interface{}) error {
 	if r.current < 0 || r.current >= r.stats.TotalRows {
-		return
+		return fmt.Errorf("invalid current index: %d", r.current)
 	}
 	recordLength := col.Length + 2
 	offset := r.current * int64(recordLength)
 
-	data := col.MMapFile.Data()[offset : offset+int64(recordLength)]
+	data := col.data[offset : offset+int64(recordLength)]
 
 	if data[0] != 1 {
-		return
+		return nil
 	}
 
-	col.read(data[1:], value)
+	return col.read(data[1:], value)
 }
 
-func (r *ColumnReader) ReadValue(field string, value interface{}) {
-	col, ok := r.columns[field]
+func (r *ColumnReader) ReadValue(field string, value interface{}) error {
+	col, ok := r.columnsData[field]
 	if !ok {
-		return
+		return fmt.Errorf("field %s not found", field)
 	}
 
 	recordLength := col.Length + 2
 	offset := r.current * int64(recordLength)
 
 	if r.current >= r.stats.TotalRows {
-		return
+		return fmt.Errorf("invalid current index: %d", r.current)
 	}
 
-	data := col.MMapFile.Data()[offset : offset+int64(recordLength)]
+	data := col.data[offset : offset+int64(recordLength)]
 
 	if data[0] != 1 {
-		return
+		return nil
 	}
 
 	fmt.Println(data[0])
 	fmt.Println(data[1:])
 
-	col.read(data[1:], value)
+	return col.read(data[1:], value)
 }
 
 func (r *ColumnReader) GetValue(field string) (interface{}, error) {
-	col, ok := r.columns[field]
+	col, ok := r.columnsData[field]
 	if !ok {
 		return nil, fmt.Errorf("field %s not found", field)
 	}
 
 	recordLength := col.Length + 2
 	offset := r.current * int64(recordLength)
-	data := col.MMapFile.Data()[offset : offset+int64(recordLength)]
+	data := col.data[offset : offset+int64(recordLength)]
 
 	if data[0] != 1 {
 		return nil, nil
