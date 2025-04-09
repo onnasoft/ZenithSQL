@@ -38,8 +38,10 @@ func (e *DefaultExecutor) Execute(ctx context.Context, stmt statement.Statement)
 		return e.executeImport(ctx, s)
 	case *statement.InsertStatement:
 		return e.executeInsert(ctx, s)
+	case *statement.UpdateStatement:
+		return e.executeUpdate(ctx, s)
 	case *statement.SelectStatement:
-		//return e.executeSelect(ctx, s)
+		return e.executeSelect(ctx, s)
 	}
 
 	return nil, ErrUnsupportedStatement

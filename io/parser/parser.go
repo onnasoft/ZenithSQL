@@ -22,8 +22,5 @@ func (p *Parser) Parse(sql string) (statement.Statement, error) {
 		return p.parseCreateDatabase(sql)
 	}
 
-	if strings.HasPrefix(strings.ToUpper(sql), "CREATE TABLE") {
-		return p.parseCreateTable(sql)
-	}
 	return nil, errors.New("unsupported SQL statement")
 }
