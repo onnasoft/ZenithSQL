@@ -9,6 +9,8 @@ import (
 )
 
 type DropTableStatement struct {
+	Database  string `msgpack:"database" valid:"required,alphanumunderscore"`
+	Schema    string `msgpack:"schema" valid:"required,alphanumunderscore"`
 	TableName string `msgpack:"table_name" valid:"required,alphanumunderscore"`
 }
 

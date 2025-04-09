@@ -28,6 +28,10 @@ func New(catalog *catalog.Catalog) *DefaultExecutor {
 
 func (e *DefaultExecutor) Execute(ctx context.Context, stmt statement.Statement) (any, error) {
 	switch s := stmt.(type) {
+	case *statement.CreateTableStatement:
+		return e.executeCreateTable(ctx, s)
+	case *statement.DropTableStatement:
+		return e.executeDropTable(ctx, s)
 	case *statement.TruncateTableStatement:
 		return e.executeTruncateTable(ctx, s)
 	case *statement.ImportStatement:

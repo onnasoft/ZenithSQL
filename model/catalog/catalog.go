@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/sirupsen/logrus"
 )
 
@@ -101,4 +102,37 @@ func (c *Catalog) GetTable(dbName, schemaName, tableName string) (*Table, error)
 	}
 
 	return table, nil
+}
+
+func (c *Catalog) CreateTable(dbName, schemaName string, tableName string, config *storage.TableConfig) (*Table, error) {
+	db, err := c.GetDatabase(dbName)
+	if err != nil {
+		return nil, err
+	}
+
+	schema, err := db.GetSchema(schemaName)
+	if err != nil {
+		return nil, err
+	}
+
+	table, err := schema.CreateTable(tableName, config)
+	if err != nil {
+		return nil, fmt.Errorf("error while creating table %v: %v", tableName, err)
+	}
+
+	return table, nil
+}
+
+func (c *Catalog) DropTable(dbName, schemaName string, tableName string) error {
+	db, err := c.GetDatabase(dbName)
+	if err != nil {
+		return err
+	}
+
+	schema, err := db.GetSchema(schemaName)
+	if err != nil {
+		return err
+	}
+
+	return schema.DropTable(tableName)
 }

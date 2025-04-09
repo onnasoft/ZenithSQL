@@ -5,21 +5,24 @@ import (
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/protocol"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 type CreateTableStatement struct {
-	TableName string             `msgpack:"table_name" json:"table_name" valid:"required,alphanumunderscore"`
-	Columns   []ColumnDefinition `msgpack:"columns" json:"columns" valid:"required"`
-	Storage   string             `msgpack:"storage" json:"storage"`
+	Database   string              `msgpack:"database" json:"database" valid:"required,alphanumunderscore"`
+	Schema     string              `msgpack:"schema" json:"schema" valid:"required,alphanumunderscore"`
+	TableName  string              `msgpack:"table_name" json:"table_name" valid:"required,alphanumunderscore"`
+	FieldsMeta []storage.FieldMeta `msgpack:"fields_meta" json:"fields_meta"`
+	Storage    string              `msgpack:"storage" json:"storage"`
 }
 
-func NewCreateTableStatement(tableName string, columns []ColumnDefinition, storage string) (*CreateTableStatement, error) {
+func NewCreateTableStatement(database, schema, tableName string, columns []storage.FieldMeta, storage string) (*CreateTableStatement, error) {
 	stmt := &CreateTableStatement{
-		TableName: tableName,
-		Columns:   columns,
-		Storage:   storage,
+		TableName:  tableName,
+		FieldsMeta: columns,
+		Storage:    storage,
 	}
 
 	if _, err := govalidator.ValidateStruct(stmt); err != nil {
@@ -52,5 +55,5 @@ func (c *CreateTableStatement) FromBytes(data []byte) error {
 }
 
 func (c *CreateTableStatement) String() string {
-	return fmt.Sprintf("CreateTableStatement{TableName: %s, Columns: %v, Storage: %s}", c.TableName, c.Columns, c.Storage)
+	return fmt.Sprintf("CreateTableStatement{TableName: %s, FieldsMeta: %v, Storage: %s}", c.TableName, c.FieldsMeta, c.Storage)
 }
