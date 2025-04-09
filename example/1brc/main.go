@@ -14,7 +14,7 @@ import (
 
 var (
 	log       = logrus.New()
-	batchSize = int64(1000_000)
+	batchSize = int64(100_000)
 )
 
 func main() {
@@ -33,46 +33,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("error getting table: %v", err)
 	}
-
-	/*
-		var itable interface{} = table.Storage
-
-		ctable, ok := itable.(*columnstorage.ColumnStorage)
-		if !ok {
-			log.Errorf("error casting table to ColumnStorage")
-			return
-		}
-
-		temperatureField, ok := ctable.Columns()["temperature"]
-		if !ok {
-			log.Errorf("error getting temperature field from table %s", table.Name)
-			return
-		}
-
-		dreader, err := ctable.Reader()
-		if err != nil {
-			log.Errorf("error creating reader: %v", err)
-		}
-		defer dreader.Close()
-
-		var ireader interface{} = dreader
-		reader, ok := ireader.(*columnstorage.ColumnReader)
-		if !ok {
-			log.Errorf("error casting reader to ColumnStorage Reader")
-			return
-		}
-
-		id := int64(2000000)
-		reader.Seek(id)
-		var num float64
-		if err := reader.ReadFieldValue(temperatureField, &num); err != nil {
-			log.Errorf("error reading field value: %v", err)
-			return
-		}
-
-		fmt.Printf("Value at index %d: %f\n", id, num)
-		fmt.Println("values:", reader.Values())
-		os.Exit(0)*/
 
 	log.Infof("Processing table %s", table.Name)
 	totalSum := processDataOptimized(table)
