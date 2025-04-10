@@ -12,6 +12,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/model/types"
 )
 
@@ -127,6 +128,8 @@ type Storage interface {
 	Writer() (Writer, error)
 	Reader() (Reader, error)
 	Cursor() (Cursor, error)
+	CursorFromIDs(ids []int64) (Cursor, error)
+	CursorWithFilter(filter *filters.Filter) (Cursor, error)
 
 	Lock() error
 	Unlock() error

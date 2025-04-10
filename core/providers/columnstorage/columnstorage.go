@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/model/types"
 	"github.com/sirupsen/logrus"
 )
@@ -138,6 +139,22 @@ func (s *ColumnStorage) Reader() (storage.Reader, error) {
 }
 
 func (s *ColumnStorage) Cursor() (storage.Cursor, error) {
+	reader, err := NewColumnReader(s.columns, s.StorageStats)
+	if err != nil {
+		return nil, err
+	}
+	return NewColumnCursor(reader), nil
+}
+
+func (s *ColumnStorage) CursorFromIDs(ids []int64) (storage.Cursor, error) {
+	reader, err := NewColumnReader(s.columns, s.StorageStats)
+	if err != nil {
+		return nil, err
+	}
+	return NewColumnCursorFromIds(reader, ids), nil
+}
+
+func (s *ColumnStorage) CursorWithFilter(filter *filters.Filter) (storage.Cursor, error) {
 	reader, err := NewColumnReader(s.columns, s.StorageStats)
 	if err != nil {
 		return nil, err

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/core/buffer"
 )
 
 type operator string
@@ -33,7 +33,7 @@ type Filter struct {
 	Field    string
 	Operator operator
 	Value    interface{}
-	scanFunc storage.ScanFunc
+	scanFunc buffer.ScanFunc
 	filter   filterFn
 
 	JoinWith string
@@ -84,7 +84,7 @@ func (f *Filter) Build() (string, []interface{}, error) {
 	return strings.Join(parts, " "+f.JoinWith+" "), values, nil
 }
 
-func (f *Filter) Prepare(scanMap map[string]*storage.ColumnScanner) error {
+func (f *Filter) Prepare(scanMap map[string]*buffer.Scanner) error {
 	if len(f.Children) == 0 {
 		columnData, ok := scanMap[f.Field]
 		if !ok {

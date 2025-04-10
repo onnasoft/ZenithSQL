@@ -1,14 +1,6 @@
 package storage
 
-import "github.com/onnasoft/ZenithSQL/model/types"
-
-type ScanFunc func(value interface{}) (bool, error)
-
-type ColumnScanner struct {
-	Type     types.DataType // o el tipo que estés usando, como types.DataType
-	Scan     ScanFunc
-	Nullable bool // opcional si te sirve
-}
+import "github.com/onnasoft/ZenithSQL/core/buffer"
 
 // Reader provides data reading operations
 type Reader interface {
@@ -21,5 +13,5 @@ type Reader interface {
 	Close() error
 	Seek(id int64) error
 	CurrentID() int64
-	ScanMap() map[string]*ColumnScanner
+	ScanMap() map[string]*buffer.Scanner
 }

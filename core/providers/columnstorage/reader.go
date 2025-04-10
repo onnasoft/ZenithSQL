@@ -3,6 +3,7 @@ package columnstorage
 import (
 	"fmt"
 
+	"github.com/onnasoft/ZenithSQL/core/buffer"
 	"github.com/onnasoft/ZenithSQL/core/storage"
 )
 
@@ -152,11 +153,11 @@ func (r *ColumnReader) CurrentID() int64 {
 	return r.current + 1
 }
 
-func (r *ColumnReader) ScanMap() map[string]*storage.ColumnScanner {
-	result := make(map[string]*storage.ColumnScanner, len(r.columnsData))
+func (r *ColumnReader) ScanMap() map[string]*buffer.Scanner {
+	result := make(map[string]*buffer.Scanner, len(r.columnsData))
 	for name, col := range r.columnsData {
 		c := col
-		result[name] = &storage.ColumnScanner{
+		result[name] = &buffer.Scanner{
 			Type: c.DataType,
 			Scan: func(value interface{}) (bool, error) {
 				return r.FastGetValue(c, value)
