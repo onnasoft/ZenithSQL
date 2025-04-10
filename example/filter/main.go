@@ -12,9 +12,9 @@ func main() {
 		Add(
 			filters.NewGroup("AND").
 				Add(filters.NewCondition("age", filters.GreaterThan, 18)).
-				Add(filters.NewCondition("status", filters.Equal, []byte("active"))),
+				Add(filters.NewCondition("status", filters.Equal, "active")),
 		).
-		Add(filters.NewCondition("country", filters.Equal, []byte("US")))
+		Add(filters.NewCondition("country", filters.Equal, "US"))
 
 	sql, values, err := f.Build()
 	if err != nil {
