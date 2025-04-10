@@ -10,156 +10,99 @@ const errorUnsupportedOperatorFloat64 = "unsupported operator %s for type float6
 func filterFloat64(f *Filter) (filterFn, error) {
 	switch f.Operator {
 	case Equal:
-		data, ok := f.Value.(float64)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value == data, nil
-		}, nil
+		return compareFloat64(f, func(a, b float64) bool { return a == b })
 	case NotEqual:
-		data, ok := f.Value.(float64)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value != data, nil
-		}, nil
+		return compareFloat64(f, func(a, b float64) bool { return a != b })
 	case GreaterThan:
-		data, ok := f.Value.(float64)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value > data, nil
-		}, nil
+		return compareFloat64(f, func(a, b float64) bool { return a > b })
 	case GreaterThanOrEqual:
-		data, ok := f.Value.(float64)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value >= data, nil
-		}, nil
+		return compareFloat64(f, func(a, b float64) bool { return a >= b })
 	case LessThan:
-		data, ok := f.Value.(float64)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value < data, nil
-		}, nil
+		return compareFloat64(f, func(a, b float64) bool { return a < b })
 	case LessThanOrEqual:
-		data, ok := f.Value.(float64)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value <= data, nil
-		}, nil
+		return compareFloat64(f, func(a, b float64) bool { return a <= b })
 	case Like, NotLike:
-		return func() (bool, error) {
-			return false, fmt.Errorf("%s operator is not applicable for float64", f.Operator)
-		}, nil
+		return unsupportedLikeFloat64(f.Operator)
 	case In:
-		values, err := extractFloat64Slice(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("operator %s requires a slice of values: %v", f.Operator, err)
-		}
-		if len(values) == 0 {
-			return nil, fmt.Errorf("operator %s requires a non-empty slice of values", f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return slices.Contains(values, value), nil
-		}, nil
+		return containsFloat64(f, true)
 	case NotIn:
-		values, err := extractFloat64Slice(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("operator %s requires a slice of values: %v", f.Operator, err)
-		}
-		if len(values) == 0 {
-			return nil, fmt.Errorf("operator %s requires a non-empty slice of values", f.Operator)
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return !slices.Contains(values, value), nil
-		}, nil
+		return containsFloat64(f, false)
 	case IsNull:
-		return func() (bool, error) {
-			var value float64
-			ok, _ := f.scanFunc(&value)
-			return !ok, nil
-		}, nil
+		return isNullFloat64(f, true)
 	case IsNotNull:
-		return func() (bool, error) {
-			var value float64
-			ok, _ := f.scanFunc(&value)
-			return ok, nil
-		}, nil
+		return isNullFloat64(f, false)
 	case Between:
-		minVal, maxVal, err := extractRangeFloat64(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid range for BETWEEN operator: %v", err)
-		}
-		if minVal > maxVal {
-			return nil, fmt.Errorf("invalid range for BETWEEN operator: min > max")
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value >= minVal && value <= maxVal, nil
-		}, nil
+		return betweenFloat64(f, true)
 	case NotBetween:
-		minVal, maxVal, err := extractRangeFloat64(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid range for NOT BETWEEN operator: %v", err)
-		}
-		if minVal > maxVal {
-			return nil, fmt.Errorf("invalid range for NOT BETWEEN operator: min > max")
-		}
-		return func() (bool, error) {
-			var value float64
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value < minVal || value > maxVal, nil
-		}, nil
+		return betweenFloat64(f, false)
 	default:
+		return func() (bool, error) {
+			return false, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
+		}, nil
+	}
+}
+
+func compareFloat64(f *Filter, cmp func(a, b float64) bool) (filterFn, error) {
+	data, ok := f.Value.(float64)
+	if !ok {
 		return nil, fmt.Errorf(errorUnsupportedOperatorFloat64, f.Operator)
 	}
+	return func() (bool, error) {
+		var value float64
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		return cmp(value, data), nil
+	}, nil
+}
+
+func unsupportedLikeFloat64(op operator) (filterFn, error) {
+	return func() (bool, error) {
+		return false, fmt.Errorf("%s operator is not applicable for float64", op)
+	}, nil
+}
+
+func containsFloat64(f *Filter, shouldContain bool) (filterFn, error) {
+	values, err := extractFloat64Slice(f.Value)
+	if err != nil || len(values) == 0 {
+		return nil, fmt.Errorf("operator %s requires a non-empty slice of float64", f.Operator)
+	}
+	return func() (bool, error) {
+		var value float64
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		found := slices.Contains(values, value)
+		if shouldContain {
+			return found, nil
+		}
+		return !found, nil
+	}, nil
+}
+
+func isNullFloat64(f *Filter, expectNull bool) (filterFn, error) {
+	return func() (bool, error) {
+		var value float64
+		ok, _ := f.scanFunc(&value)
+		return expectNull != ok, nil
+	}, nil
+}
+
+func betweenFloat64(f *Filter, inclusive bool) (filterFn, error) {
+	minVal, maxVal, err := extractRangeFloat64(f.Value)
+	if err != nil || minVal > maxVal {
+		return nil, fmt.Errorf("invalid range for %s operator", f.Operator)
+	}
+	return func() (bool, error) {
+		var value float64
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		if inclusive {
+			return value >= minVal && value <= maxVal, nil
+		}
+		return value < minVal || value > maxVal, nil
+	}, nil
 }
 
 func extractFloat64Slice(value interface{}) ([]float64, error) {

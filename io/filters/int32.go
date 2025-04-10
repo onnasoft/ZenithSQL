@@ -10,156 +10,97 @@ const errorUnsupportedOperatorInt32 = "unsupported operator %s for type int32"
 func filterInt32(f *Filter) (filterFn, error) {
 	switch f.Operator {
 	case Equal:
-		data, ok := f.Value.(int32)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value == data, nil
-		}, nil
+		return compareInt32(f, func(a, b int32) bool { return a == b })
 	case NotEqual:
-		data, ok := f.Value.(int32)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value != data, nil
-		}, nil
+		return compareInt32(f, func(a, b int32) bool { return a != b })
 	case GreaterThan:
-		data, ok := f.Value.(int32)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value > data, nil
-		}, nil
+		return compareInt32(f, func(a, b int32) bool { return a > b })
 	case GreaterThanOrEqual:
-		data, ok := f.Value.(int32)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value >= data, nil
-		}, nil
+		return compareInt32(f, func(a, b int32) bool { return a >= b })
 	case LessThan:
-		data, ok := f.Value.(int32)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value < data, nil
-		}, nil
+		return compareInt32(f, func(a, b int32) bool { return a < b })
 	case LessThanOrEqual:
-		data, ok := f.Value.(int32)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value <= data, nil
-		}, nil
+		return compareInt32(f, func(a, b int32) bool { return a <= b })
 	case Like, NotLike:
-		return func() (bool, error) {
-			return false, fmt.Errorf("%s operator is not applicable for int32", f.Operator)
-		}, nil
+		return unsupportedLikeInt32(f.Operator)
 	case In:
-		values, err := extractInt32Slice(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("operator %s requires a slice of values: %v", f.Operator, err)
-		}
-		if len(values) == 0 {
-			return nil, fmt.Errorf("operator %s requires a non-empty slice of values", f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return slices.Contains(values, value), nil
-		}, nil
+		return containsInt32(f, true)
 	case NotIn:
-		values, err := extractInt32Slice(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("operator %s requires a slice of values: %v", f.Operator, err)
-		}
-		if len(values) == 0 {
-			return nil, fmt.Errorf("operator %s requires a non-empty slice of values", f.Operator)
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return !slices.Contains(values, value), nil
-		}, nil
+		return containsInt32(f, false)
 	case IsNull:
-		return func() (bool, error) {
-			var value int32
-			ok, _ := f.scanFunc(&value)
-			return !ok, nil
-		}, nil
+		return isNullInt32(f, true)
 	case IsNotNull:
-		return func() (bool, error) {
-			var value int32
-			ok, _ := f.scanFunc(&value)
-			return ok, nil
-		}, nil
+		return isNullInt32(f, false)
 	case Between:
-		minVal, maxVal, err := extractRangeInt32(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid range for BETWEEN operator: %v", err)
-		}
-		if minVal > maxVal {
-			return nil, fmt.Errorf("invalid range for BETWEEN operator: min > max")
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value >= minVal && value <= maxVal, nil
-		}, nil
+		return betweenInt32(f, true)
 	case NotBetween:
-		minVal, maxVal, err := extractRangeInt32(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid range for NOT BETWEEN operator: %v", err)
-		}
-		if minVal > maxVal {
-			return nil, fmt.Errorf("invalid range for NOT BETWEEN operator: min > max")
-		}
-		return func() (bool, error) {
-			var value int32
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value < minVal || value > maxVal, nil
-		}, nil
+		return betweenInt32(f, false)
 	default:
 		return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
 	}
+}
+
+func compareInt32(f *Filter, cmp func(a, b int32) bool) (filterFn, error) {
+	data, ok := f.Value.(int32)
+	if !ok {
+		return nil, fmt.Errorf(errorUnsupportedOperatorInt32, f.Operator)
+	}
+	return func() (bool, error) {
+		var value int32
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		return cmp(value, data), nil
+	}, nil
+}
+
+func unsupportedLikeInt32(op operator) (filterFn, error) {
+	return func() (bool, error) {
+		return false, fmt.Errorf("%s operator is not applicable for int32", op)
+	}, nil
+}
+
+func containsInt32(f *Filter, shouldContain bool) (filterFn, error) {
+	values, err := extractInt32Slice(f.Value)
+	if err != nil || len(values) == 0 {
+		return nil, fmt.Errorf("operator %s requires a non-empty slice of int32", f.Operator)
+	}
+	return func() (bool, error) {
+		var value int32
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		found := slices.Contains(values, value)
+		if shouldContain {
+			return found, nil
+		}
+		return !found, nil
+	}, nil
+}
+
+func isNullInt32(f *Filter, expectNull bool) (filterFn, error) {
+	return func() (bool, error) {
+		var value int32
+		ok, _ := f.scanFunc(&value)
+		return expectNull != ok, nil
+	}, nil
+}
+
+func betweenInt32(f *Filter, inclusive bool) (filterFn, error) {
+	minVal, maxVal, err := extractRangeInt32(f.Value)
+	if err != nil || minVal > maxVal {
+		return nil, fmt.Errorf("invalid range for %s operator", f.Operator)
+	}
+	return func() (bool, error) {
+		var value int32
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		if inclusive {
+			return value >= minVal && value <= maxVal, nil
+		}
+		return value < minVal || value > maxVal, nil
+	}, nil
 }
 
 func extractInt32Slice(value interface{}) ([]int32, error) {

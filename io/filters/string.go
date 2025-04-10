@@ -12,193 +12,122 @@ const errorUnsupportedOperatorString = "unsupported operator %s for type string"
 func filterString(f *Filter) (filterFn, error) {
 	switch f.Operator {
 	case Equal:
-		data, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value == data, nil
-		}, nil
+		return compareString(f, func(a, b string) bool { return a == b })
 	case NotEqual:
-		data, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value != data, nil
-		}, nil
+		return compareString(f, func(a, b string) bool { return a != b })
 	case GreaterThan:
-		data, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value > data, nil
-		}, nil
+		return compareString(f, func(a, b string) bool { return a > b })
 	case GreaterThanOrEqual:
-		data, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value >= data, nil
-		}, nil
+		return compareString(f, func(a, b string) bool { return a >= b })
 	case LessThan:
-		data, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value < data, nil
-		}, nil
+		return compareString(f, func(a, b string) bool { return a < b })
 	case LessThanOrEqual:
-		data, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value <= data, nil
-		}, nil
+		return compareString(f, func(a, b string) bool { return a <= b })
 	case Like:
-		pattern, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf("LIKE operator requires a string pattern")
-		}
-		regexPattern := likeToRegex(pattern)
-		re, err := regexp.Compile(regexPattern)
-		if err != nil {
-			return nil, fmt.Errorf("invalid LIKE pattern: %v", err)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return re.MatchString(value), nil
-		}, nil
+		return likeMatchString(f, true)
 	case NotLike:
-		pattern, ok := f.Value.(string)
-		if !ok {
-			return nil, fmt.Errorf("NOT LIKE operator requires a string pattern")
-		}
-		regexPattern := likeToRegex(pattern)
-		re, err := regexp.Compile(regexPattern)
-		if err != nil {
-			return nil, fmt.Errorf("invalid NOT LIKE pattern: %v", err)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return !re.MatchString(value), nil
-		}, nil
+		return likeMatchString(f, false)
 	case In:
-		values, err := extractStringSlice(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("operator %s requires a slice of strings: %v", f.Operator, err)
-		}
-		if len(values) == 0 {
-			return nil, fmt.Errorf("operator %s requires a non-empty slice of values", f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return slices.Contains(values, value), nil
-		}, nil
+		return containsString(f, true)
 	case NotIn:
-		values, err := extractStringSlice(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("operator %s requires a slice of strings: %v", f.Operator, err)
-		}
-		if len(values) == 0 {
-			return nil, fmt.Errorf("operator %s requires a non-empty slice of values", f.Operator)
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return !slices.Contains(values, value), nil
-		}, nil
+		return containsString(f, false)
 	case IsNull:
-		return func() (bool, error) {
-			var value string
-			ok, _ := f.scanFunc(&value)
-			return !ok, nil
-		}, nil
+		return isNullString(f, true)
 	case IsNotNull:
-		return func() (bool, error) {
-			var value string
-			ok, _ := f.scanFunc(&value)
-			return ok, nil
-		}, nil
+		return isNullString(f, false)
 	case Between:
-		minVal, maxVal, err := extractRangeString(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid range for BETWEEN operator: %v", err)
-		}
-		if minVal > maxVal {
-			return nil, fmt.Errorf("invalid range for BETWEEN operator: min > max")
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value >= minVal && value <= maxVal, nil
-		}, nil
+		return betweenString(f, true)
 	case NotBetween:
-		minVal, maxVal, err := extractRangeString(f.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid range for NOT BETWEEN operator: %v", err)
-		}
-		if minVal > maxVal {
-			return nil, fmt.Errorf("invalid range for NOT BETWEEN operator: min > max")
-		}
-		return func() (bool, error) {
-			var value string
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value < minVal || value > maxVal, nil
-		}, nil
+		return betweenString(f, false)
 	default:
 		return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
 	}
 }
 
+func compareString(f *Filter, cmp func(a, b string) bool) (filterFn, error) {
+	data, ok := f.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf(errorUnsupportedOperatorString, f.Operator)
+	}
+	return func() (bool, error) {
+		var value string
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		return cmp(value, data), nil
+	}, nil
+}
+
+func likeMatchString(f *Filter, positive bool) (filterFn, error) {
+	pattern, ok := f.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf("%s operator requires a string pattern", f.Operator)
+	}
+	re, err := regexp.Compile(likeToRegex(pattern))
+	if err != nil {
+		return nil, fmt.Errorf("invalid LIKE pattern: %v", err)
+	}
+	return func() (bool, error) {
+		var value string
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		matched := re.MatchString(value)
+		if positive {
+			return matched, nil
+		}
+		return !matched, nil
+	}, nil
+}
+
+func containsString(f *Filter, shouldContain bool) (filterFn, error) {
+	values, err := extractStringSlice(f.Value)
+	if err != nil || len(values) == 0 {
+		return nil, fmt.Errorf("operator %s requires a non-empty slice of strings", f.Operator)
+	}
+	return func() (bool, error) {
+		var value string
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		found := slices.Contains(values, value)
+		if shouldContain {
+			return found, nil
+		}
+		return !found, nil
+	}, nil
+}
+
+func isNullString(f *Filter, expectNull bool) (filterFn, error) {
+	return func() (bool, error) {
+		var value string
+		ok, _ := f.scanFunc(&value)
+		return expectNull != ok, nil
+	}, nil
+}
+
+func betweenString(f *Filter, inclusive bool) (filterFn, error) {
+	minVal, maxVal, err := extractRangeString(f.Value)
+	if err != nil || minVal > maxVal {
+		return nil, fmt.Errorf("invalid range for %s operator", f.Operator)
+	}
+	return func() (bool, error) {
+		var value string
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		if inclusive {
+			return value >= minVal && value <= maxVal, nil
+		}
+		return value < minVal || value > maxVal, nil
+	}, nil
+}
+
 func likeToRegex(pattern string) string {
-	regexPattern := regexp.QuoteMeta(pattern)
-	regexPattern = strings.ReplaceAll(regexPattern, "%", ".*")
-	regexPattern = strings.ReplaceAll(regexPattern, "_", ".")
-	return "^" + regexPattern + "$"
+	p := regexp.QuoteMeta(pattern)
+	p = strings.ReplaceAll(p, "%", ".*")
+	p = strings.ReplaceAll(p, "_", ".")
+	return "^" + p + "$"
 }
 
 func extractStringSlice(value interface{}) ([]string, error) {
@@ -208,11 +137,11 @@ func extractStringSlice(value interface{}) ([]string, error) {
 	}
 	res := make([]string, len(raw))
 	for i, v := range raw {
-		vStr, ok := v.(string)
+		str, ok := v.(string)
 		if !ok {
 			return nil, fmt.Errorf("value %v is not string", v)
 		}
-		res[i] = vStr
+		res[i] = str
 	}
 	return res, nil
 }

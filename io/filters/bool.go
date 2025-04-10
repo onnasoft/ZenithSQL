@@ -9,47 +9,38 @@ const errorUnsupportedOperatorBool = "unsupported operator %s for type bool"
 func filterBool(f *Filter) (filterFn, error) {
 	switch f.Operator {
 	case Equal:
-		data, ok := f.Value.(bool)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorBool, f.Operator)
-		}
-		return func() (bool, error) {
-			var value bool
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value == data, nil
-		}, nil
+		return compareBool(f, func(a, b bool) bool { return a == b })
 	case NotEqual:
-		data, ok := f.Value.(bool)
-		if !ok {
-			return nil, fmt.Errorf(errorUnsupportedOperatorBool, f.Operator)
-		}
-		return func() (bool, error) {
-			var value bool
-			if _, err := f.scanFunc(&value); err != nil {
-				return false, err
-			}
-			return value != data, nil
-		}, nil
+		return compareBool(f, func(a, b bool) bool { return a != b })
 	case IsNull:
-		return func() (bool, error) {
-			var value bool
-			ok, _ := f.scanFunc(&value)
-			return !ok, nil
-		}, nil
+		return isNullBool(f, true)
 	case IsNotNull:
-		return func() (bool, error) {
-			var value bool
-			ok, _ := f.scanFunc(&value)
-			return ok, nil
-		}, nil
-	// Operadores no aplicables para bool
-	case GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual, Like, NotLike, In, NotIn, Between, NotBetween:
-		return func() (bool, error) {
-			return false, fmt.Errorf("operator %s is not applicable for boolean values", f.Operator)
-		}, nil
+		return isNullBool(f, false)
 	default:
+		return func() (bool, error) {
+			return false, fmt.Errorf(errorUnsupportedOperatorBool, f.Operator)
+		}, nil
+	}
+}
+
+func compareBool(f *Filter, cmp func(a, b bool) bool) (filterFn, error) {
+	data, ok := f.Value.(bool)
+	if !ok {
 		return nil, fmt.Errorf(errorUnsupportedOperatorBool, f.Operator)
 	}
+	return func() (bool, error) {
+		var value bool
+		if _, err := f.scanFunc(&value); err != nil {
+			return false, err
+		}
+		return cmp(value, data), nil
+	}, nil
+}
+
+func isNullBool(f *Filter, expectNull bool) (filterFn, error) {
+	return func() (bool, error) {
+		var value bool
+		ok, _ := f.scanFunc(&value)
+		return expectNull != ok, nil
+	}, nil
 }
