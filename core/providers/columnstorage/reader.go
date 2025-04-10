@@ -73,7 +73,7 @@ func (r *ColumnReader) Values() map[string]interface{} {
 	return values
 }
 
-func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{}) (bool, error) {
+func (r *ColumnReader) FastGetValue(col storage.ColumnData, value interface{}) (bool, error) {
 	if r.current < 0 || r.current >= r.stats.TotalRows {
 		return false, fmt.Errorf("invalid current index: %d", r.current)
 	}
@@ -85,6 +85,15 @@ func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{})
 
 	recordLength := colData.Length + 2
 	offset := r.current * int64(recordLength)
+
+	if r.current >= r.stats.TotalRows {
+		return false, fmt.Errorf("invalid current index: %d", r.current)
+	}
+
+	if int(offset)+recordLength > len(colData.data) {
+		return false, fmt.Errorf("offset out of bounds: %d", offset)
+	}
+
 	data := colData.data[offset : offset+int64(recordLength)]
 
 	if data[0] != 1 {
@@ -92,7 +101,7 @@ func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{})
 	}
 
 	if err := colData.DataType.Read(data[1:], value); err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to read value: %w", err)
 	}
 
 	return true, nil
@@ -104,20 +113,9 @@ func (r *ColumnReader) ReadValue(field string, value interface{}) error {
 		return fmt.Errorf("field %s not found", field)
 	}
 
-	recordLength := col.Length + 2
-	offset := r.current * int64(recordLength)
+	_, err := r.FastGetValue(col, value)
 
-	if r.current >= r.stats.TotalRows {
-		return fmt.Errorf("invalid current index: %d", r.current)
-	}
-
-	data := col.data[offset : offset+int64(recordLength)]
-
-	if data[0] != 1 {
-		return nil
-	}
-
-	return col.DataType.Read(data[1:], value)
+	return err
 }
 
 func (r *ColumnReader) GetValue(field string) (interface{}, error) {
@@ -148,4 +146,8 @@ func (r *ColumnReader) Close() error {
 		}
 	}
 	return nil
+}
+
+func (r *ColumnReader) CurrentID() int64 {
+	return r.current + 1
 }

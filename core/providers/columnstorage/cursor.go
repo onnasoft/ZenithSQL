@@ -68,7 +68,7 @@ func (c *ColumnCursor) ScanField(field string) interface{} {
 }
 
 func (c *ColumnCursor) FastScanField(col storage.ColumnData, value interface{}) (bool, error) {
-	return c.reader.ReadFieldValue(col, value)
+	return c.reader.FastGetValue(col, value)
 }
 
 func (c *ColumnCursor) Err() error {
@@ -89,4 +89,8 @@ func (c *ColumnCursor) Limit(limit int64) {
 
 func (c *ColumnCursor) Skip(offset int64) {
 	c.skip = offset
+}
+
+func (c *ColumnCursor) Reader() storage.Reader {
+	return c.reader
 }

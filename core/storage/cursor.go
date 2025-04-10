@@ -11,4 +11,5 @@ type Cursor interface {
 	Count() int64
 	Limit(limit int64)
 	Skip(offset int64)
+	Reader() Reader
 }

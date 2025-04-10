@@ -59,8 +59,18 @@ func main() {
 	}
 	defer cursor.Close()
 
-	f2.Prepare(table.ColumnsData(), cursor)
+	reader := cursor.Reader()
+
+	f2.Prepare(reader.ColumnsData(), cursor)
 	cursor.Next()
+
+	column := reader.ColumnsData()["age"]
+
+	var value int8
+	reader.ReadValue("age", &value)
+	fmt.Println("Age:", value)
+	reader.FastGetValue(column, &value)
+	fmt.Println("Age:", value)
 
 	ok, err := f2.Execute()
 	if err != nil {

@@ -69,21 +69,13 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (s *ColumnStorage) ColumnsData() map[string]storage.ColumnData {
-	columnsData := make(map[string]storage.ColumnData)
-	for _, col := range s.columns {
-		columnsData[col.name] = &ColumnData{Column: col}
-	}
-	return columnsData
-}
-
 func (s *ColumnStorage) Truncate() error {
 	s.Lock()
 	defer s.Unlock()
 
 	for _, col := range s.columns {
 		if err := col.Truncate(); err != nil {
-			s.Logger.Error("Failed to truncate column ", col.Name, err)
+			s.Logger.Error("Failed to truncate column ", col.Name(), err)
 			return err
 		}
 	}

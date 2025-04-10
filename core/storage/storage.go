@@ -122,8 +122,6 @@ type Storage interface {
 	Stats() StorageStats
 	Compact(ctx context.Context) error
 
-	ColumnsData() map[string]ColumnData
-
 	Truncate() error
 
 	Writer() (Writer, error)
