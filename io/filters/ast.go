@@ -27,7 +27,6 @@ const (
 )
 
 type Filter struct {
-	// Nodo hoja (condición simple)
 	Database string
 	Schema   string
 	Table    string
@@ -37,9 +36,8 @@ type Filter struct {
 	scanFunc storage.ScanFunc
 	filter   filterFn
 
-	// Nodo compuesto (agrupación lógica)
-	JoinWith string    // "AND", "OR"
-	Children []*Filter // subcondiciones agrupadas
+	JoinWith string
+	Children []*Filter
 }
 
 func NewGroup(joinWith string) *Filter {
