@@ -15,7 +15,7 @@ import (
 const statsFileName = "stats.bin"
 
 type ColumnStorage struct {
-	fields        []storage.FieldMeta
+	fields        storage.FieldsMeta
 	columns       map[string]*Column
 	BasePath      string
 	StatsFilePath string
@@ -27,9 +27,9 @@ type ColumnStorage struct {
 }
 
 type ColumnStorageConfig struct {
+	Fields        storage.FieldsMeta
 	BasePath      string
 	StatsFilePath string
-	Fields        []storage.FieldMeta
 	StorageStats  *storage.StorageStats
 	Logger        *logrus.Logger
 }
@@ -69,13 +69,21 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 	return nil
 }
 
+func (s *ColumnStorage) FieldsMeta() map[string]storage.FieldMeta {
+	fields := make(map[string]storage.FieldMeta)
+	for _, col := range s.fields {
+		fields[col.Name] = col
+	}
+	return fields
+}
+
 func (s *ColumnStorage) Truncate() error {
 	s.Lock()
 	defer s.Unlock()
 
 	for _, col := range s.columns {
 		if err := col.Truncate(); err != nil {
-			s.Logger.WithError(err).Errorf("Failed to truncate column %s", col.Name)
+			s.Logger.Error("Failed to truncate column ", col.Name, err)
 			return err
 		}
 	}
@@ -135,6 +143,10 @@ func (s *ColumnStorage) Writer() (storage.Writer, error) {
 
 func (s *ColumnStorage) Reader() (storage.Reader, error) {
 	return NewColumnReader(s.columns, s.StorageStats), nil
+}
+
+func (s *ColumnStorage) Cursor() (storage.Cursor, error) {
+	return NewColumnCursor(NewColumnReader(s.columns, s.StorageStats)), nil
 }
 
 func (s *ColumnStorage) Lock() error {

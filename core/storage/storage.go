@@ -122,16 +122,13 @@ type Storage interface {
 	Stats() StorageStats
 	Compact(ctx context.Context) error
 
-	CreateField(meta FieldMeta, validators ...Validator) error
-	DeleteField(name string) error
-	GetFieldMeta(name string) (FieldMeta, error)
-	ListFields() ([]FieldMeta, error)
-	UpdateField(name string, newMeta FieldMeta) error
+	FieldsMeta() map[string]FieldMeta
 
 	Truncate() error
 
 	Writer() (Writer, error)
 	Reader() (Reader, error)
+	Cursor() (Cursor, error)
 
 	Lock() error
 	Unlock() error

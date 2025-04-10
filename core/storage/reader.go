@@ -1,9 +1,5 @@
 package storage
 
-type ColumnData interface {
-	Name() string
-}
-
 // Reader provides data reading operations
 type Reader interface {
 	Next() bool
@@ -11,7 +7,7 @@ type Reader interface {
 	Values() map[string]interface{}
 	ReadValue(field string, value interface{}) error
 	GetValue(field string) (interface{}, error)
-	ReadFieldValue(col ColumnData, value interface{}) error
+	ReadFieldValue(col ColumnData, value interface{}) (bool, error)
 	Close() error
 	Seek(id int64) error
 }

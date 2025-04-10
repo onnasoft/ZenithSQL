@@ -78,14 +78,14 @@ func (r *ColumnReader) Values() map[string]interface{} {
 	return values
 }
 
-func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{}) error {
+func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{}) (bool, error) {
 	if r.current < 0 || r.current >= r.stats.TotalRows {
-		return fmt.Errorf("invalid current index: %d", r.current)
+		return false, fmt.Errorf("invalid current index: %d", r.current)
 	}
 
 	colData, ok := col.(*ColumnData)
 	if !ok {
-		return fmt.Errorf("invalid column type: %T", col)
+		return false, fmt.Errorf("invalid column type: %T", col)
 	}
 
 	recordLength := colData.Length + 2
@@ -94,10 +94,14 @@ func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{})
 	data := colData.data[offset : offset+int64(recordLength)]
 
 	if data[0] != 1 {
-		return nil
+		return false, nil
 	}
 
-	return colData.DataType.Read(data[1:], value)
+	if err := colData.DataType.Read(data[1:], value); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (r *ColumnReader) ReadValue(field string, value interface{}) error {
@@ -114,7 +118,6 @@ func (r *ColumnReader) ReadValue(field string, value interface{}) error {
 	}
 
 	data := col.data[offset : offset+int64(recordLength)]
-	fmt.Println("data", data, col.Length, offset, r.current)
 
 	if data[0] != 1 {
 		return nil

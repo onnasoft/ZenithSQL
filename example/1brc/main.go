@@ -101,7 +101,7 @@ func worker(table *catalog.Table, jobs <-chan [2]int64, results chan<- float64, 
 		for i := start; i <= end; i++ {
 			reader.Seek(i)
 
-			err = reader.ReadFieldValue(temperatureField, &num)
+			_, err = reader.ReadFieldValue(temperatureField, &num)
 			if err != nil {
 				log.Errorf("error reading field value: %v", err)
 				continue

@@ -12,14 +12,22 @@ import (
 )
 
 type Column struct {
-	Name       string
-	DataType   types.DataType
+	Name string
+	types.DataType
 	Length     int
 	Required   bool
 	Validators []validate.Validator
 
 	BasePath string
 	MMapFile *buffer.MMapFile
+}
+
+func (c *Column) Type() types.DataType {
+	return c.DataType
+}
+
+func (c *Column) String() string {
+	return fmt.Sprintf("Name: %s, Type: %s, Length: %d, Required: %t", c.Name, c.DataType.String(), c.Length, c.Required)
 }
 
 func NewColumn(name string, dataType types.DataType, length int, required bool, basePath string) (*Column, error) {
