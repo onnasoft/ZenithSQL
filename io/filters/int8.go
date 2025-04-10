@@ -5,54 +5,88 @@ import (
 	"slices"
 )
 
-func filterInt8(f *Filter) (filterFn, error) {
-	data := f.Value.(int8)
+const errorUnsupportedOperatorInt8 = "unsupported operator %s for type int8"
 
+func filterInt8(f *Filter) (filterFn, error) {
 	switch f.Operator {
 	case Equal:
+		data, ok := f.Value.(int8)
+		if !ok {
+			return nil, fmt.Errorf(errorUnsupportedOperatorInt8, f.Operator)
+		}
 		return func() (bool, error) {
 			var value int8
-			_, err := f.cursor.FastScanField(f.columnData, &value)
-			if err != nil {
+			if _, err := f.scanFunc(&value); err != nil {
 				return false, err
 			}
-			fmt.Println("filterInt8", value, data)
 			return value == data, nil
 		}, nil
 	case NotEqual:
+		data, ok := f.Value.(int8)
+		if !ok {
+			return nil, fmt.Errorf(errorUnsupportedOperatorInt8, f.Operator)
+		}
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return value != data, nil
 		}, nil
 	case GreaterThan:
+		data, ok := f.Value.(int8)
+		if !ok {
+			return nil, fmt.Errorf(errorUnsupportedOperatorInt8, f.Operator)
+		}
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return value > data, nil
 		}, nil
 	case GreaterThanOrEqual:
+		data, ok := f.Value.(int8)
+		if !ok {
+			return nil, fmt.Errorf(errorUnsupportedOperatorInt8, f.Operator)
+		}
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return value >= data, nil
 		}, nil
 	case LessThan:
+		data, ok := f.Value.(int8)
+		if !ok {
+			return nil, fmt.Errorf(errorUnsupportedOperatorInt8, f.Operator)
+		}
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return value < data, nil
 		}, nil
 	case LessThanOrEqual:
+		data, ok := f.Value.(int8)
+		if !ok {
+			return nil, fmt.Errorf(errorUnsupportedOperatorInt8, f.Operator)
+		}
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return value <= data, nil
 		}, nil
 	case Like:
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			// Assuming the LIKE operator is not applicable for int8
 			// This is a placeholder; you might want to handle this differently
 			return false, fmt.Errorf("LIKE operator is not applicable for int8")
@@ -60,7 +94,9 @@ func filterInt8(f *Filter) (filterFn, error) {
 	case NotLike:
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			// Assuming the NOT LIKE operator is not applicable for int8
 			// This is a placeholder; you might want to handle this differently
 			return false, fmt.Errorf("NOT LIKE operator is not applicable for int8")
@@ -76,7 +112,9 @@ func filterInt8(f *Filter) (filterFn, error) {
 		}
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return slices.Contains(values, value), nil
 		}, nil
 
@@ -90,20 +128,22 @@ func filterInt8(f *Filter) (filterFn, error) {
 		}
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return !slices.Contains(values, value), nil
 		}, nil
 
 	case IsNull:
 		return func() (bool, error) {
 			var value int8
-			ok, _ := f.cursor.FastScanField(f.columnData, &value)
+			ok, _ := f.scanFunc(&value)
 			return !ok, nil
 		}, nil
 	case IsNotNull:
 		return func() (bool, error) {
 			var value int8
-			ok, _ := f.cursor.FastScanField(f.columnData, &value)
+			ok, _ := f.scanFunc(&value)
 			return ok, nil
 		}, nil
 	case Between:
@@ -117,7 +157,9 @@ func filterInt8(f *Filter) (filterFn, error) {
 
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return value >= minVal && value <= maxVal, nil
 		}, nil
 
@@ -132,7 +174,9 @@ func filterInt8(f *Filter) (filterFn, error) {
 
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			if _, err := f.scanFunc(&value); err != nil {
+				return false, err
+			}
 			return value < minVal || value > maxVal, nil
 		}, nil
 	default:

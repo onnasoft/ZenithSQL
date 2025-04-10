@@ -151,3 +151,17 @@ func (r *ColumnReader) Close() error {
 func (r *ColumnReader) CurrentID() int64 {
 	return r.current + 1
 }
+
+func (r *ColumnReader) ScanMap() map[string]*storage.ColumnScanner {
+	result := make(map[string]*storage.ColumnScanner, len(r.columnsData))
+	for name, col := range r.columnsData {
+		c := col
+		result[name] = &storage.ColumnScanner{
+			Type: c.DataType,
+			Scan: func(value interface{}) (bool, error) {
+				return r.FastGetValue(c, value)
+			},
+		}
+	}
+	return result
+}

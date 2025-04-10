@@ -3,83 +3,76 @@ package main
 import (
 	"fmt"
 
+	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func main() {
-	f := filters.NewCondition("age", filters.Equal, int8(12))
-
-	sql, values, err := f.Build()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-
-	fmt.Println("SQL:", sql)
-	fmt.Println("Values:", values)
-
-	msg, _ := msgpack.Marshal(f)
-	var f2 filters.Filter
-	err = msgpack.Unmarshal(msg, &f2)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-
-	sql2, values2, err := f2.Build()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	fmt.Println("SQL2:", sql2)
-	fmt.Println("Values2:", values2)
-
-	catalog, err := catalog.OpenCatalog(&catalog.CatalogConfig{
-		Path:   "./data",
-		Logger: logrus.New(),
-	})
+	catalog, table, cursor, err := setup()
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 	defer catalog.Close()
+	defer table.Close()
+	defer cursor.Close()
+
+	if !cursor.Next() {
+		fmt.Println("No rows to test")
+		return
+	}
+
+	tests := []struct {
+		name   string
+		filter *filters.Filter
+	}{
+		{"Equal", filters.NewCondition("age", filters.Equal, int8(12))},
+		{"NotEqual", filters.NewCondition("age", filters.NotEqual, int8(12))},
+		{"GreaterThan", filters.NewCondition("age", filters.GreaterThan, int8(12))},
+		{"GreaterThanOrEqual", filters.NewCondition("age", filters.GreaterThanOrEqual, int8(12))},
+		{"LessThan", filters.NewCondition("age", filters.LessThan, int8(12))},
+		{"LessThanOrEqual", filters.NewCondition("age", filters.LessThanOrEqual, int8(12))},
+		{"In", filters.NewCondition("age", filters.In, []interface{}{int8(11), int8(12), int8(13)})},
+		{"NotIn", filters.NewCondition("age", filters.NotIn, []interface{}{int8(11), int8(12), int8(13)})},
+		{"IsNull", filters.NewCondition("age", filters.IsNull, nil)},
+		{"IsNotNull", filters.NewCondition("age", filters.IsNotNull, nil)},
+		{"Between", filters.NewCondition("age", filters.Between, []interface{}{int8(10), int8(15)})},
+		{"NotBetween", filters.NewCondition("age", filters.NotBetween, []interface{}{int8(10), int8(15)})},
+	}
+
+	for _, test := range tests {
+		test.filter.Prepare(cursor.Reader().ScanMap())
+		ok, err := test.filter.Execute()
+		if err != nil {
+			fmt.Printf("[%s] Error: %v\n", test.name, err)
+			continue
+		}
+		fmt.Printf("[%s] Result: %v\n", test.name, ok)
+	}
+}
+
+func setup() (*catalog.Catalog, *catalog.Table, storage.Cursor, error) {
+	catalog, err := catalog.OpenCatalog(&catalog.CatalogConfig{
+		Path:   "./data",
+		Logger: logrus.New(),
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to open catalog: %w", err)
+	}
+	defer catalog.Close()
 
 	table, err := catalog.GetTable("testdb", "public", "users")
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		return nil, nil, nil, fmt.Errorf("failed to get table: %w", err)
 	}
+
 	cursor, err := table.Cursor()
 	if err != nil {
 		fmt.Println("Error:", err)
-		return
+		return nil, nil, nil, fmt.Errorf("failed to create cursor: %w", err)
 	}
-	defer cursor.Close()
 
-	reader := cursor.Reader()
-
-	f2.Prepare(reader.ColumnsData(), cursor)
-	cursor.Next()
-
-	column := reader.ColumnsData()["age"]
-
-	var value int8
-	reader.ReadValue("age", &value)
-	fmt.Println("Age:", value)
-	reader.FastGetValue(column, &value)
-	fmt.Println("Age:", value)
-
-	ok, err := f2.Execute()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	if ok {
-		fmt.Println("Condition met")
-	} else {
-		fmt.Println("Condition not met")
-	}
+	return catalog, table, cursor, nil
 }

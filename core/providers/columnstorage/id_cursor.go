@@ -17,6 +17,10 @@ func NewIDCursor(reader *ColumnReader, ids []int64) *IDCursor {
 	}
 }
 
+func (c *IDCursor) ColumnsData() map[string]storage.ColumnData {
+	return c.reader.ColumnsData()
+}
+
 func (c *IDCursor) Next() bool {
 	if c.index+1 >= len(c.ids) {
 		return false
@@ -62,7 +66,10 @@ func (c *IDCursor) Count() int64 {
 	return int64(len(c.ids))
 }
 
-func (c *IDCursor) Limit(limit int64) {}
+func (c *IDCursor) Limit(limit int64) {
+
+}
+
 func (c *IDCursor) Skip(offset int64) {}
 
 func (c *IDCursor) Reader() storage.Reader {

@@ -19,6 +19,10 @@ func NewColumnCursor(reader *ColumnReader) *ColumnCursor {
 	}
 }
 
+func (c *ColumnCursor) ColumnsData() map[string]storage.ColumnData {
+	return c.reader.ColumnsData()
+}
+
 func (c *ColumnCursor) Next() bool {
 	if c.err != nil {
 		return false

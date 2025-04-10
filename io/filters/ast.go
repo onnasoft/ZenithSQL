@@ -28,15 +28,14 @@ const (
 
 type Filter struct {
 	// Nodo hoja (condición simple)
-	Database   string
-	Schema     string
-	Table      string
-	Field      string
-	Operator   operator
-	Value      interface{}
-	columnData storage.ColumnData
-	cursor     storage.Cursor
-	filter     filterFn
+	Database string
+	Schema   string
+	Table    string
+	Field    string
+	Operator operator
+	Value    interface{}
+	scanFunc storage.ScanFunc
+	filter   filterFn
 
 	// Nodo compuesto (agrupación lógica)
 	JoinWith string    // "AND", "OR"
@@ -64,12 +63,10 @@ func (f *Filter) Add(child *Filter) *Filter {
 }
 
 func (f *Filter) Build() (string, []interface{}, error) {
-	// Es una condición simple (hoja)
 	if f.Field != "" && f.Operator != "" {
 		return buildSimpleCondition(f)
 	}
 
-	// Es una agrupación
 	if len(f.Children) == 0 {
 		return "", nil, errors.New("empty filter group")
 	}
@@ -89,17 +86,16 @@ func (f *Filter) Build() (string, []interface{}, error) {
 	return strings.Join(parts, " "+f.JoinWith+" "), values, nil
 }
 
-func (f *Filter) Prepare(columnsData map[string]storage.ColumnData, cursor storage.Cursor) error {
+func (f *Filter) Prepare(scanMap map[string]*storage.ColumnScanner) error {
 	if len(f.Children) == 0 {
-		columnData, ok := columnsData[f.Field]
+		columnData, ok := scanMap[f.Field]
 		if !ok {
 			return errors.New("field not found")
 		}
 
-		f.columnData = columnData
-		f.cursor = cursor
+		f.scanFunc = columnData.Scan
 
-		filter, ok := mapEqOps[columnData.Type()]
+		filter, ok := mapEqOps[columnData.Type]
 		if !ok {
 			return errors.New("unsupported type")
 		}
@@ -113,7 +109,7 @@ func (f *Filter) Prepare(columnsData map[string]storage.ColumnData, cursor stora
 	}
 
 	for _, child := range f.Children {
-		if err := child.Prepare(columnsData, cursor); err != nil {
+		if err := child.Prepare(scanMap); err != nil {
 			return err
 		}
 	}

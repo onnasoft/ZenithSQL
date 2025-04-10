@@ -2,6 +2,7 @@ package storage
 
 // Cursor provides query result iteration
 type Cursor interface {
+	ColumnsData() map[string]ColumnData
 	Next() bool
 	Scan(dest map[string]interface{}) error
 	ScanField(field string) interface{}
