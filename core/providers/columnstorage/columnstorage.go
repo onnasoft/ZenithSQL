@@ -34,7 +34,7 @@ type ColumnStorageConfig struct {
 	Logger        *logrus.Logger
 }
 
-func NewColumnStorage(cfg *ColumnStorageConfig) *ColumnStorage {
+func NewColumnStorage(cfg *ColumnStorageConfig) storage.Storage {
 	store := &ColumnStorage{
 		fields:        cfg.Fields,
 		BasePath:      cfg.BasePath,
@@ -69,12 +69,12 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (s *ColumnStorage) FieldsMeta() map[string]storage.FieldMeta {
-	fields := make(map[string]storage.FieldMeta)
-	for _, col := range s.fields {
-		fields[col.Name] = col
+func (s *ColumnStorage) ColumnsData() map[string]storage.ColumnData {
+	columnsData := make(map[string]storage.ColumnData)
+	for _, col := range s.columns {
+		columnsData[col.name] = &ColumnData{Column: col}
 	}
-	return fields
+	return columnsData
 }
 
 func (s *ColumnStorage) Truncate() error {
@@ -142,11 +142,15 @@ func (s *ColumnStorage) Writer() (storage.Writer, error) {
 }
 
 func (s *ColumnStorage) Reader() (storage.Reader, error) {
-	return NewColumnReader(s.columns, s.StorageStats), nil
+	return NewColumnReader(s.columns, s.StorageStats)
 }
 
 func (s *ColumnStorage) Cursor() (storage.Cursor, error) {
-	return NewColumnCursor(NewColumnReader(s.columns, s.StorageStats)), nil
+	reader, err := NewColumnReader(s.columns, s.StorageStats)
+	if err != nil {
+		return nil, err
+	}
+	return NewColumnCursor(reader), nil
 }
 
 func (s *ColumnStorage) Lock() error {

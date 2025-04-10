@@ -36,6 +36,7 @@ type Filter struct {
 	Value      interface{}
 	columnData storage.ColumnData
 	cursor     storage.Cursor
+	filter     filterFn
 
 	// Nodo compuesto (agrupación lógica)
 	JoinWith string    // "AND", "OR"
@@ -98,6 +99,16 @@ func (f *Filter) Prepare(columnsData map[string]storage.ColumnData, cursor stora
 		f.columnData = columnData
 		f.cursor = cursor
 
+		filter, ok := mapEqOps[columnData.Type()]
+		if !ok {
+			return errors.New("unsupported type")
+		}
+		fn, err := filter(f)
+		if err != nil {
+			return err
+		}
+		f.filter = fn
+
 		return nil
 	}
 
@@ -108,4 +119,11 @@ func (f *Filter) Prepare(columnsData map[string]storage.ColumnData, cursor stora
 	}
 
 	return nil
+}
+
+func (f *Filter) Execute() (bool, error) {
+	if f.filter == nil {
+		return false, errors.New("filter not prepared")
+	}
+	return f.filter()
 }

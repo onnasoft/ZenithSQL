@@ -19,8 +19,8 @@ func main() {
 	catalog := setupDatabaseAndTable()
 	defer catalog.Close()
 	users := []map[string]interface{}{
-		{"name": "Javier Xar", "email": "xarjavier@gmail.com", "avg": 1.2},
-		{"name": "Jhon Doe", "email": "jhondoe@gmail.com", "avg": 2.3},
+		{"name": "Javier Xar", "email": "xarjavier@gmail.com", "age": int8(12)},
+		{"name": "Jhon Doe", "email": "jhondoe@gmail.com", "age": int8(10)},
 	}
 
 	insertRecords(catalog, users)
@@ -99,8 +99,8 @@ func setupDatabaseAndTable() *catalog.Catalog {
 				},
 			},
 			{
-				Name:       "avg",
-				Type:       types.Float64,
+				Name:       "age",
+				Type:       types.Int8,
 				Length:     8,
 				Validators: []storage.ValidatorInfo{},
 			},

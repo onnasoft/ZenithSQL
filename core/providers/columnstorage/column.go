@@ -11,8 +11,17 @@ import (
 	"github.com/onnasoft/ZenithSQL/validate"
 )
 
+type ColumnData struct {
+	*Column
+	data []byte
+}
+
+func (c *ColumnData) Name() string {
+	return c.Column.name
+}
+
 type Column struct {
-	Name string
+	name string
 	types.DataType
 	Length     int
 	Required   bool
@@ -27,7 +36,11 @@ func (c *Column) Type() types.DataType {
 }
 
 func (c *Column) String() string {
-	return fmt.Sprintf("Name: %s, Type: %s, Length: %d, Required: %t", c.Name, c.DataType.String(), c.Length, c.Required)
+	return fmt.Sprintf("Name: %s, Type: %s, Length: %d, Required: %t", c.Name(), c.DataType.String(), c.Length, c.Required)
+}
+
+func (c *Column) Name() string {
+	return c.name
 }
 
 func NewColumn(name string, dataType types.DataType, length int, required bool, basePath string) (*Column, error) {
@@ -37,7 +50,7 @@ func NewColumn(name string, dataType types.DataType, length int, required bool, 
 	}
 
 	col := &Column{
-		Name:     name,
+		name:     name,
 		DataType: dataType,
 		Length:   effectiveLength,
 		Required: required,
@@ -52,7 +65,7 @@ func NewColumn(name string, dataType types.DataType, length int, required bool, 
 }
 
 func (c *Column) init() error {
-	filepath := filepath.Join(c.BasePath, c.Name+".data")
+	filepath := filepath.Join(c.BasePath, c.name+".data")
 	buff, err := buffer.Open(filepath, 0, (c.Length+2)*10_000_000)
 	if err != nil {
 		return err
@@ -63,7 +76,7 @@ func (c *Column) init() error {
 }
 
 func (c *Column) Truncate() error {
-	path := filepath.Join(c.BasePath, c.Name+".data")
+	path := filepath.Join(c.BasePath, c.name+".data")
 
 	if _, err := os.Stat(path); err == nil {
 		if err := os.Remove(path); err != nil {
@@ -76,8 +89,5 @@ func (c *Column) Truncate() error {
 }
 
 func (c *Column) Close() error {
-	if err := c.MMapFile.Close(); err != nil {
-		return fmt.Errorf("failed to close buffer: %w", err)
-	}
 	return nil
 }

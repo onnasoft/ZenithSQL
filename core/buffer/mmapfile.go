@@ -19,6 +19,16 @@ type MMapFile struct {
 	path     string
 	pageSize int
 	growMux  sync.RWMutex
+
+	// Views management
+	views    map[*viewInfo]struct{}
+	viewsMux sync.Mutex
+}
+
+type viewInfo struct {
+	data     []byte
+	size     int
+	refCount int
 }
 
 func Open(path string, initialSize, pageSize int) (*MMapFile, error) {
@@ -59,6 +69,7 @@ func Open(path string, initialSize, pageSize int) (*MMapFile, error) {
 		size:     initialSize,
 		pageSize: pageSize,
 		path:     path,
+		views:    make(map[*viewInfo]struct{}),
 	}, nil
 }
 
@@ -82,6 +93,44 @@ func (m *MMapFile) CanWrite(offset, length int) bool {
 	defer m.growMux.Unlock()
 
 	return m.tryGrow(requiredEnd)
+}
+
+func (m *MMapFile) AllocateView() ([]byte, error) {
+	m.growMux.RLock()
+	defer m.growMux.RUnlock()
+
+	view, err := syscall.Mmap(int(m.file.Fd()), 0, m.size, syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mmap read view: %w", err)
+	}
+
+	info := &viewInfo{
+		data:     view,
+		size:     m.size,
+		refCount: 1,
+	}
+
+	m.viewsMux.Lock()
+	m.views[info] = struct{}{}
+	m.viewsMux.Unlock()
+
+	return view, nil
+}
+
+func (m *MMapFile) FreeView(view []byte) {
+	m.viewsMux.Lock()
+	defer m.viewsMux.Unlock()
+
+	for info := range m.views {
+		if &info.data[0] == &view[0] { // Compare underlying pointers
+			info.refCount--
+			if info.refCount == 0 {
+				syscall.Munmap(info.data)
+				delete(m.views, info)
+			}
+			return
+		}
+	}
 }
 
 func (m *MMapFile) tryGrow(requiredSize int) bool {
@@ -201,10 +250,27 @@ func (m *MMapFile) Close() error {
 	m.growMux.Lock()
 	defer m.growMux.Unlock()
 
+	// Clean up all views
+	m.viewsMux.Lock()
+	for info := range m.views {
+		syscall.Munmap(info.data)
+		delete(m.views, info)
+	}
+	m.viewsMux.Unlock()
+
 	if err := syscall.Munmap(m.data); err != nil {
 		return err
 	}
 	return m.file.Close()
+}
+
+func (m *MMapFile) ReadAt(offset int, length int) ([]byte, error) {
+	if offset < 0 || length <= 0 || offset+length > m.size {
+		return nil, fmt.Errorf("invalid range: offset %d, length %d (file size %d)",
+			offset, length, m.size)
+	}
+
+	return m.data[offset : offset+length], nil
 }
 
 // Data returns the memory mapped bytes

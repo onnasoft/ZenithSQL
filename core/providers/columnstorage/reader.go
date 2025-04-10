@@ -6,27 +6,22 @@ import (
 	"github.com/onnasoft/ZenithSQL/core/storage"
 )
 
-type ColumnData struct {
-	*Column
-	data []byte
-}
-
-func (c *ColumnData) Name() string {
-	return c.Column.Name
-}
-
 type ColumnReader struct {
 	columnsData map[string]*ColumnData
 	current     int64
 	stats       *storage.StorageStats
 }
 
-func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) *ColumnReader {
+func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) (*ColumnReader, error) {
 	columnsData := make(map[string]*ColumnData, len(columns))
 	for name, col := range columns {
+		data, err := col.MMapFile.AllocateView()
+		if err != nil {
+			return nil, fmt.Errorf("failed to allocate view for column %s: %w", name, err)
+		}
 		columnsData[name] = &ColumnData{
 			Column: col,
-			data:   col.MMapFile.Data(),
+			data:   data,
 		}
 	}
 
@@ -34,7 +29,7 @@ func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) *C
 		current:     -1,
 		stats:       stats,
 		columnsData: columnsData,
-	}
+	}, nil
 }
 
 func (r *ColumnReader) ColumnsData() map[string]storage.ColumnData {
@@ -90,7 +85,6 @@ func (r *ColumnReader) ReadFieldValue(col storage.ColumnData, value interface{})
 
 	recordLength := colData.Length + 2
 	offset := r.current * int64(recordLength)
-
 	data := colData.data[offset : offset+int64(recordLength)]
 
 	if data[0] != 1 {
@@ -144,5 +138,14 @@ func (r *ColumnReader) GetValue(field string) (interface{}, error) {
 }
 
 func (r *ColumnReader) Close() error {
+	for _, col := range r.columnsData {
+		col.MMapFile.FreeView(col.data)
+	}
+
+	for _, col := range r.columnsData {
+		if err := col.Close(); err != nil {
+			return fmt.Errorf("failed to close column %s: %w", col.Name(), err)
+		}
+	}
 	return nil
 }

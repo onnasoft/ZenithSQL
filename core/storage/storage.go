@@ -122,7 +122,7 @@ type Storage interface {
 	Stats() StorageStats
 	Compact(ctx context.Context) error
 
-	FieldsMeta() map[string]FieldMeta
+	ColumnsData() map[string]ColumnData
 
 	Truncate() error
 

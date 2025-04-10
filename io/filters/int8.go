@@ -12,7 +12,11 @@ func filterInt8(f *Filter) (filterFn, error) {
 	case Equal:
 		return func() (bool, error) {
 			var value int8
-			f.cursor.FastScanField(f.columnData, &value)
+			_, err := f.cursor.FastScanField(f.columnData, &value)
+			if err != nil {
+				return false, err
+			}
+			fmt.Println("filterInt8", value, data)
 			return value == data, nil
 		}, nil
 	case NotEqual:

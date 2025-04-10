@@ -7,6 +7,6 @@ import (
 type filterFn func() (bool, error)
 type applyFilter func(f *Filter) (filterFn, error)
 
-var mapEqOps = map[types.Types]applyFilter{
-	types.Int8: filterInt8,
+var mapEqOps = map[types.DataType]applyFilter{
+	types.Int8Type{}: filterInt8,
 }

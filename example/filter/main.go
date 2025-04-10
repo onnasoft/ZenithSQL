@@ -4,17 +4,13 @@ import (
 	"fmt"
 
 	"github.com/onnasoft/ZenithSQL/io/filters"
+	"github.com/onnasoft/ZenithSQL/model/catalog"
+	"github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 func main() {
-	f := filters.NewGroup("OR").
-		Add(
-			filters.NewGroup("AND").
-				Add(filters.NewCondition("age", filters.GreaterThan, 18)).
-				Add(filters.NewCondition("status", filters.Equal, "active")),
-		).
-		Add(filters.NewCondition("country", filters.Equal, "US"))
+	f := filters.NewCondition("age", filters.Equal, int8(12))
 
 	sql, values, err := f.Build()
 	if err != nil {
@@ -40,4 +36,40 @@ func main() {
 	}
 	fmt.Println("SQL2:", sql2)
 	fmt.Println("Values2:", values2)
+
+	catalog, err := catalog.OpenCatalog(&catalog.CatalogConfig{
+		Path:   "./data",
+		Logger: logrus.New(),
+	})
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer catalog.Close()
+
+	table, err := catalog.GetTable("testdb", "public", "users")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	cursor, err := table.Cursor()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer cursor.Close()
+
+	f2.Prepare(table.ColumnsData(), cursor)
+	cursor.Next()
+
+	ok, err := f2.Execute()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	if ok {
+		fmt.Println("Condition met")
+	} else {
+		fmt.Println("Condition not met")
+	}
 }
