@@ -7,6 +7,7 @@ import (
 	"github.com/onnasoft/ZenithSQL/core/executor"
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/filters"
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/onnasoft/ZenithSQL/model/types"
@@ -25,27 +26,32 @@ func main() {
 
 	insertRecords(catalog, users)
 
-	table, err := catalog.GetTable("testdb", "public", "users")
-	if err != nil {
-		log.Fatalf("error getting table: %v", err)
-	}
-
 	filter := filters.NewCondition("age", filters.Equal, int8(12))
 
-	cursor, err := table.CursorWithFilter(filter)
+	stmt, err := statement.NewSelectStatement(statement.SelectStatementConfig{
+		Database:  "testdb",
+		Schema:    "public",
+		TableName: "users",
+		Where:     filter,
+		Columns:   []string{"name", "email"},
+	})
 	if err != nil {
-		log.Fatalf("error creating cursor: %v", err)
+		log.Fatalf("error creating select statement: %v", err)
 	}
-	defer cursor.Close()
 
-	for cursor.Next() {
-		record := map[string]interface{}{}
-		err := cursor.Scan(record)
-		if err != nil {
-			log.Fatalf("error getting record: %v", err)
-		}
-		log.Infof("Record: %v", record)
+	executor := executor.New(catalog)
+
+	result := executor.Execute(context.Background(), stmt)
+	if !result.IsSuccess() {
+		log.Fatalf("error executing select statement: %v", result.GetMessage())
 	}
+
+	response, ok := result.(*response.SelectResponse)
+	if !ok {
+		log.Fatalf("error casting response to SelectResponse")
+	}
+
+	log.Infof("Select executed successfully: %v", response.Rows)
 }
 
 func setupDatabaseAndTable() *catalog.Catalog {

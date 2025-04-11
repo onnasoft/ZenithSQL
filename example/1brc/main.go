@@ -99,7 +99,7 @@ func worker(table *catalog.Table, jobs <-chan [2]int64, results chan<- float64, 
 		var num float64
 
 		for i := start; i <= end; i++ {
-			reader.Seek(i)
+			reader.See(i)
 
 			_, err = reader.FastGetValue(temperatureField, &num)
 			if err != nil {

@@ -49,7 +49,7 @@ func (r *ColumnReader) Next() bool {
 	return true
 }
 
-func (r *ColumnReader) Seek(id int64) error {
+func (r *ColumnReader) See(id int64) error {
 	if id <= 0 || id > r.stats.TotalRows {
 		return fmt.Errorf("invalid id: %d", id)
 	}

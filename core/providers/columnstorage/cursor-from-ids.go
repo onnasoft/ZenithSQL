@@ -37,7 +37,7 @@ func (c *ColumnCursorFromIds) Next() bool {
 			return false
 		}
 		id := c.ids[c.index]
-		c.err = c.reader.Seek(id)
+		c.err = c.reader.See(id)
 		return c.err == nil
 	}
 }

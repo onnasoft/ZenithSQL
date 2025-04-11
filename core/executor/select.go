@@ -3,7 +3,7 @@ package executor
 import (
 	"context"
 
-	"github.com/onnasoft/ZenithSQL/io/filters"
+	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 )
@@ -13,15 +13,28 @@ func (e *DefaultExecutor) executeSelect(ctx context.Context, stmt *statement.Sel
 	if err != nil {
 		return response.NewSelectResponse(false, err.Error(), nil)
 	}
-	filter := filters.NewCondition("age", filters.Equal, int8(12))
 
-	cursor, err := table.CursorWithFilter(filter)
+	cursor, err := table.CursorWithFilter(stmt.Where)
 	if err != nil {
 		return response.NewSelectResponse(false, err.Error(), nil)
 	}
 	defer cursor.Close()
 
+	cursor.Skip(int64(stmt.Offset))
+	if stmt.Limit > 0 {
+		cursor.Limit(int64(stmt.Limit))
+	}
+
+	if len(stmt.Aggregations) > 0 {
+		return e.processAggregations(ctx, stmt, cursor)
+	}
+
+	return e.processSimpleSelect(ctx, stmt, cursor)
+}
+
+func (e *DefaultExecutor) processSimpleSelect(ctx context.Context, stmt *statement.SelectStatement, cursor storage.Cursor) response.Response {
 	rows := []map[string]interface{}{}
+
 	for cursor.Next() {
 		select {
 		case <-ctx.Done():
@@ -29,7 +42,8 @@ func (e *DefaultExecutor) executeSelect(ctx context.Context, stmt *statement.Sel
 		default:
 		}
 
-		record := map[string]interface{}{}
+		record := make(map[string]interface{})
+
 		for _, column := range stmt.Columns {
 			value, err := cursor.ScanField(column)
 			if err != nil {
@@ -38,15 +52,13 @@ func (e *DefaultExecutor) executeSelect(ctx context.Context, stmt *statement.Sel
 			record[column] = value
 		}
 
-		err := cursor.Scan(record)
-		if err != nil {
-			return response.NewSelectResponse(false, err.Error(), nil)
-		}
+		rows = append(rows, record)
 	}
 
-	return response.NewSelectResponse(
-		true,
-		"Select executed successfully",
-		rows,
-	)
+	return response.NewSelectResponse(true, "Select executed successfully", rows)
+}
+
+func (e *DefaultExecutor) processAggregations(ctx context.Context, stmt *statement.SelectStatement, cursor storage.Cursor) response.Response {
+	// Implementación futura del procesamiento de agregaciones y GROUP BY
+	return response.NewSelectResponse(false, "aggregations not implemented yet", nil)
 }

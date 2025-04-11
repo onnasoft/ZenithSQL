@@ -11,7 +11,7 @@ type Reader interface {
 	GetValue(field string) (interface{}, error)
 	FastGetValue(col ColumnData, value interface{}) (bool, error)
 	Close() error
-	Seek(id int64) error
+	See(id int64) error
 	CurrentID() int64
 	ScanMap() map[string]*buffer.Scanner
 }

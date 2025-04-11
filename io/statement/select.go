@@ -5,43 +5,58 @@ import (
 	"strings"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/io/protocol"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// SelectStatement representa una consulta SELECT para una sola tabla
+type Aggregation struct {
+	Function string `msgpack:"function" valid:"required,matches(^(SUM|AVG|COUNT|MAX|MIN|GROUP_CONCAT)$)"`
+	Column   string `msgpack:"column" valid:"required"`
+	Alias    string `msgpack:"alias"`
+}
+
 type SelectStatement struct {
-	Database  string   `msgpack:"database" valid:"required,alphanumunderscore"`
-	Schema    string   `msgpack:"schema" valid:"required,alphanumunderscore"`
-	TableName string   `msgpack:"table_name" valid:"required,alphanumunderscore"`
-	Columns   []string `msgpack:"columns" valid:"required"`
-	Where     string   `msgpack:"where"`
-	Limit     uint64   `msgpack:"limit"`
-	Offset    uint64   `msgpack:"offset"`
-	OrderBy   []string `msgpack:"order_by"`
+	Database     string          `msgpack:"database" valid:"required,alphanumunderscore"`
+	Schema       string          `msgpack:"schema" valid:"required,alphanumunderscore"`
+	TableName    string          `msgpack:"table_name" valid:"required,alphanumunderscore"`
+	Columns      []string        `msgpack:"columns"`
+	Aggregations []Aggregation   `msgpack:"aggregations"`
+	Where        *filters.Filter `msgpack:"where"`
+	GroupBy      []string        `msgpack:"group_by"`
+	Having       string          `msgpack:"having"`
+	Limit        uint64          `msgpack:"limit"`
+	Offset       uint64          `msgpack:"offset"`
+	OrderBy      []string        `msgpack:"order_by"`
 }
 
 type SelectStatementConfig struct {
-	Database  string
-	Schema    string
-	TableName string
-	Columns   []string
-	Where     string
-	Limit     uint64
-	Offset    uint64
-	OrderBy   []string
+	Database     string
+	Schema       string
+	TableName    string
+	Columns      []string
+	Aggregations []Aggregation
+	Where        *filters.Filter
+	GroupBy      []string
+	Having       string
+	Limit        uint64
+	Offset       uint64
+	OrderBy      []string
 }
 
 func NewSelectStatement(cfg SelectStatementConfig) (*SelectStatement, error) {
 	stmt := &SelectStatement{
-		Database:  strings.TrimSpace(cfg.Database),
-		Schema:    strings.TrimSpace(cfg.Schema),
-		TableName: strings.TrimSpace(cfg.TableName),
-		Columns:   cleanColumns(cfg.Columns),
-		Where:     strings.TrimSpace(cfg.Where),
-		Limit:     cfg.Limit,
-		Offset:    cfg.Offset,
-		OrderBy:   cleanOrderBy(cfg.OrderBy),
+		Database:     strings.TrimSpace(cfg.Database),
+		Schema:       strings.TrimSpace(cfg.Schema),
+		TableName:    strings.TrimSpace(cfg.TableName),
+		Columns:      cleanStrings(cfg.Columns),
+		Aggregations: cfg.Aggregations,
+		Where:        cfg.Where,
+		GroupBy:      cleanStrings(cfg.GroupBy),
+		Having:       strings.TrimSpace(cfg.Having),
+		Limit:        cfg.Limit,
+		Offset:       cfg.Offset,
+		OrderBy:      cleanStrings(cfg.OrderBy),
 	}
 
 	if err := stmt.validate(); err != nil {
@@ -51,30 +66,28 @@ func NewSelectStatement(cfg SelectStatementConfig) (*SelectStatement, error) {
 	return stmt, nil
 }
 
-// validate realiza la validación completa de la estructura
 func (s *SelectStatement) validate() error {
 	if _, err := govalidator.ValidateStruct(s); err != nil {
 		return fmt.Errorf("invalid statement: %w", err)
 	}
 
-	if len(s.Columns) == 0 {
-		return fmt.Errorf("at least one column must be specified")
+	if len(s.Columns) == 0 && len(s.Aggregations) == 0 {
+		return fmt.Errorf("must specify columns or aggregations")
 	}
 
-	for _, col := range s.Columns {
-		if !govalidator.IsAlphanumeric(col) && !strings.Contains(col, ".") {
-			return fmt.Errorf("invalid column name: %s", col)
+	for _, agg := range s.Aggregations {
+		if _, err := govalidator.ValidateStruct(agg); err != nil {
+			return fmt.Errorf("invalid aggregation: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// cleanColumns limpia y normaliza los nombres de columna
-func cleanColumns(columns []string) []string {
-	cleaned := make([]string, 0, len(columns))
-	for _, col := range columns {
-		trimmed := strings.TrimSpace(col)
+func cleanStrings(items []string) []string {
+	cleaned := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
 		if trimmed != "" {
 			cleaned = append(cleaned, trimmed)
 		}
@@ -82,29 +95,14 @@ func cleanColumns(columns []string) []string {
 	return cleaned
 }
 
-// cleanOrderBy limpia y normaliza las cláusulas ORDER BY
-func cleanOrderBy(orderBy []string) []string {
-	cleaned := make([]string, 0, len(orderBy))
-	for _, ob := range orderBy {
-		trimmed := strings.TrimSpace(ob)
-		if trimmed != "" {
-			cleaned = append(cleaned, trimmed)
-		}
-	}
-	return cleaned
-}
-
-// Protocol implementa la interfaz Message
 func (s SelectStatement) Protocol() protocol.MessageType {
 	return protocol.Select
 }
 
-// ToBytes serializa el statement a bytes
 func (s SelectStatement) ToBytes() ([]byte, error) {
 	return msgpack.Marshal(s)
 }
 
-// FromBytes deserializa el statement desde bytes
 func (s *SelectStatement) FromBytes(data []byte) error {
 	if err := msgpack.Unmarshal(data, s); err != nil {
 		return err
@@ -112,22 +110,60 @@ func (s *SelectStatement) FromBytes(data []byte) error {
 	return s.validate()
 }
 
-// String representa el statement como string
 func (s SelectStatement) String() string {
-	return fmt.Sprintf(
-		"SELECT %s FROM %s.%s.%s WHERE %s ORDER BY %s LIMIT %d OFFSET %d",
-		strings.Join(s.Columns, ", "),
-		s.Database,
-		s.Schema,
-		s.TableName,
-		s.Where,
-		strings.Join(s.OrderBy, ", "),
-		s.Limit,
-		s.Offset,
-	)
+	var sb strings.Builder
+	sb.WriteString("SELECT ")
+
+	if len(s.Columns) > 0 {
+		sb.WriteString(strings.Join(s.Columns, ", "))
+	}
+
+	if len(s.Aggregations) > 0 {
+		if len(s.Columns) > 0 {
+			sb.WriteString(", ")
+		}
+		for i, agg := range s.Aggregations {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s(%s)", agg.Function, agg.Column))
+			if agg.Alias != "" {
+				sb.WriteString(" AS " + agg.Alias)
+			}
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf(" FROM %s.%s.%s", s.Database, s.Schema, s.TableName))
+
+	if s.Where != nil {
+		sql, _, err := s.Where.Build()
+		if err == nil && sql != "" {
+			sb.WriteString(" WHERE " + sql)
+		}
+	}
+
+	if len(s.GroupBy) > 0 {
+		sb.WriteString(" GROUP BY " + strings.Join(s.GroupBy, ", "))
+		if s.Having != "" {
+			sb.WriteString(" HAVING " + s.Having)
+		}
+	}
+
+	if len(s.OrderBy) > 0 {
+		sb.WriteString(" ORDER BY " + strings.Join(s.OrderBy, ", "))
+	}
+
+	if s.Limit > 0 {
+		sb.WriteString(fmt.Sprintf(" LIMIT %d", s.Limit))
+	}
+
+	if s.Offset > 0 {
+		sb.WriteString(fmt.Sprintf(" OFFSET %d", s.Offset))
+	}
+
+	return sb.String()
 }
 
-// GetFullTableName devuelve el nombre completo de la tabla con esquema
 func (s *SelectStatement) GetFullTableName() string {
 	return fmt.Sprintf("%s.%s.%s", s.Database, s.Schema, s.TableName)
 }
