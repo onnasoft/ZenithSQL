@@ -37,6 +37,7 @@ const (
 	BulkInsert MessageType = 34
 	Upsert     MessageType = 35
 	Query      MessageType = 36
+	Import     MessageType = 37
 
 	// Transaction Management
 	BeginTransaction MessageType = 40

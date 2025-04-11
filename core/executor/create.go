@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 )
 
-func (e *DefaultExecutor) executeCreateTable(ctx context.Context, stmt *statement.CreateTableStatement) (any, error) {
+func (e *DefaultExecutor) executeCreateTable(ctx context.Context, stmt *statement.CreateTableStatement) response.Response {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return response.NewCreateTableResponse(false, "context canceled")
 	default:
 	}
 
@@ -27,7 +28,8 @@ func (e *DefaultExecutor) executeCreateTable(ctx context.Context, stmt *statemen
 	}
 
 	if _, err := e.catalog.CreateTable(dbname, schema, tableName, config); err != nil {
-		return nil, err
+		return response.NewCreateTableResponse(false, err.Error())
 	}
-	return nil, nil
+
+	return response.NewCreateTableResponse(true, "table created")
 }

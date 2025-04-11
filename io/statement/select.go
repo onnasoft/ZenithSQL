@@ -21,17 +21,27 @@ type SelectStatement struct {
 	OrderBy   []string `msgpack:"order_by"`
 }
 
-// NewSelectStatement crea una nueva instancia de SelectStatement con validación
-func NewSelectStatement(database, schema, tableName string, columns []string, where string, limit, offset uint64, orderBy []string) (*SelectStatement, error) {
+type SelectStatementConfig struct {
+	Database  string
+	Schema    string
+	TableName string
+	Columns   []string
+	Where     string
+	Limit     uint64
+	Offset    uint64
+	OrderBy   []string
+}
+
+func NewSelectStatement(cfg SelectStatementConfig) (*SelectStatement, error) {
 	stmt := &SelectStatement{
-		Database:  strings.TrimSpace(database),
-		Schema:    strings.TrimSpace(schema),
-		TableName: strings.TrimSpace(tableName),
-		Columns:   cleanColumns(columns),
-		Where:     strings.TrimSpace(where),
-		Limit:     limit,
-		Offset:    offset,
-		OrderBy:   cleanOrderBy(orderBy),
+		Database:  strings.TrimSpace(cfg.Database),
+		Schema:    strings.TrimSpace(cfg.Schema),
+		TableName: strings.TrimSpace(cfg.TableName),
+		Columns:   cleanColumns(cfg.Columns),
+		Where:     strings.TrimSpace(cfg.Where),
+		Limit:     cfg.Limit,
+		Offset:    cfg.Offset,
+		OrderBy:   cleanOrderBy(cfg.OrderBy),
 	}
 
 	if err := stmt.validate(); err != nil {

@@ -176,3 +176,12 @@ func (s *Schema) DropTable(name string) error {
 
 	return nil
 }
+
+func (s *Schema) Close() error {
+	for _, table := range s.Tables {
+		if err := table.Close(); err != nil {
+			return fmt.Errorf("failed to close table: %v", err)
+		}
+	}
+	return nil
+}

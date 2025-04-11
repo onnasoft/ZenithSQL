@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/onnasoft/ZenithSQL/core/executor"
 	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
 	"github.com/onnasoft/ZenithSQL/model/types"
@@ -24,23 +24,28 @@ func main() {
 	}
 
 	insertRecords(catalog, users)
+
 	table, err := catalog.GetTable("testdb", "public", "users")
 	if err != nil {
 		log.Fatalf("error getting table: %v", err)
 	}
 
-	reader, err := table.Reader()
-	if err != nil {
-		log.Fatalf("error creating reader: %v", err)
-	}
-	defer reader.Close()
+	filter := filters.NewCondition("age", filters.Equal, int8(12))
 
-	reader.Seek(1)
-	var name string
-	reader.ReadValue("name", &name)
-	fmt.Printf("name: %s\n", name)
-	fmt.Println(reader.Values())
-	fmt.Println(reader.Values()["avg"])
+	cursor, err := table.CursorWithFilter(filter)
+	if err != nil {
+		log.Fatalf("error creating cursor: %v", err)
+	}
+	defer cursor.Close()
+
+	for cursor.Next() {
+		record := map[string]interface{}{}
+		err := cursor.Scan(record)
+		if err != nil {
+			log.Fatalf("error getting record: %v", err)
+		}
+		log.Infof("Record: %v", record)
+	}
 }
 
 func setupDatabaseAndTable() *catalog.Catalog {
@@ -107,17 +112,16 @@ func setupDatabaseAndTable() *catalog.Catalog {
 		},
 	}
 
-	// Guardar configuración
-	if _, err = schema.CreateTable("users", tableConfig); err == nil {
-		err = schema.DropTable("users")
-		if err != nil {
+	if catalog.ExistsTable("testdb", "public", "users") {
+		log.Info("Table exists")
+		if err = catalog.DropTable("testdb", "public", "users"); err != nil {
 			log.Fatalf("error dropping table: %v", err)
 		}
-		log.Info("Table dropped successfully")
 	}
 
+	// Guardar configuración
 	if _, err = schema.CreateTable("users", tableConfig); err != nil {
-		log.Info("Table already exists, skipping creation")
+		log.Fatalf("error creating table: %v", err)
 	}
 
 	return catalog
@@ -131,8 +135,8 @@ func insertRecords(catalog *catalog.Catalog, users []map[string]interface{}) err
 		log.Fatal("Error creating insert statement: ", err)
 	}
 
-	if _, err := executor.Execute(context.Background(), stmt); err != nil {
-		log.Fatal("Error inserting records: ", err)
+	if response := executor.Execute(context.Background(), stmt); !response.IsSuccess() {
+		log.Fatal("Error executing insert statement: ", response.GetMessage())
 	}
 
 	return nil

@@ -99,8 +99,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("error creating truncate statement: %v", err)
 		}
-		if _, err := executor.Execute(context.Background(), stmt); err != nil {
-			log.Fatalf("error executing truncate statement: %v", err)
+		if response := executor.Execute(context.Background(), stmt); !response.IsSuccess() {
+			log.Fatalf("error truncating table: %v", response.GetMessage())
 		}
 	}
 
@@ -250,9 +250,9 @@ func processBatch(executor executor.Executor, batch []map[string]interface{}, st
 		return fmt.Errorf("creating import statement: %w", err)
 	}
 
-	if _, err := executor.Execute(context.Background(), stmt); err != nil {
+	if response := executor.Execute(context.Background(), stmt); !response.IsSuccess() {
 		atomic.AddInt64(&stats.failedRows, int64(len(batch)))
-		return fmt.Errorf("executing import: %w", err)
+		return fmt.Errorf("import failed: %s", response.GetMessage())
 	}
 
 	atomic.AddInt64(&stats.processedRows, int64(len(batch)))

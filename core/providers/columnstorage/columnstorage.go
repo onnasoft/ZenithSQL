@@ -159,7 +159,7 @@ func (s *ColumnStorage) CursorWithFilter(filter *filters.Filter) (storage.Cursor
 	if err != nil {
 		return nil, err
 	}
-	return NewColumnCursor(reader), nil
+	return NewColumnCursorWithFilter(NewColumnCursor(reader), filter), nil
 }
 
 func (s *ColumnStorage) Lock() error {

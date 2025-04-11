@@ -3,24 +3,25 @@ package executor
 import (
 	"context"
 
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 )
 
-func (e *DefaultExecutor) executeTruncateTable(ctx context.Context, stmt *statement.TruncateTableStatement) (any, error) {
+func (e *DefaultExecutor) executeTruncateTable(ctx context.Context, stmt *statement.TruncateTableStatement) response.Response {
 	table, err := e.catalog.GetTable(stmt.Database, stmt.Schema, stmt.TableName)
 	if err != nil {
-		return nil, err
+		return response.NewTruncateTableResponse(false, err.Error())
 	}
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return response.NewTruncateTableResponse(false, "context canceled")
 	default:
 	}
 
 	if err := table.Truncate(); err != nil {
-		return nil, err
+		return response.NewTruncateTableResponse(false, err.Error())
 	}
 
-	return nil, nil
+	return response.NewTruncateTableResponse(true, "table truncated successfully")
 }

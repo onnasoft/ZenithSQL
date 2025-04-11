@@ -3,13 +3,14 @@ package executor
 import (
 	"context"
 
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 )
 
-func (e *DefaultExecutor) executeDropTable(ctx context.Context, stmt *statement.DropTableStatement) (any, error) {
+func (e *DefaultExecutor) executeDropTable(ctx context.Context, stmt *statement.DropTableStatement) response.Response {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return response.NewDropTableResponse(false, "context canceled")
 	default:
 	}
 
@@ -18,7 +19,7 @@ func (e *DefaultExecutor) executeDropTable(ctx context.Context, stmt *statement.
 	tableName := stmt.TableName
 
 	if err := e.catalog.DropTable(dbname, schema, tableName); err != nil {
-		return nil, err
+		return response.NewDropTableResponse(false, err.Error())
 	}
-	return nil, nil
+	return response.NewDropTableResponse(true, "table dropped")
 }

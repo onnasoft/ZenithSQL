@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/onnasoft/ZenithSQL/io/response"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
 )
@@ -13,7 +14,7 @@ var (
 )
 
 type Executor interface {
-	Execute(ctx context.Context, stmt statement.Statement) (any, error)
+	Execute(ctx context.Context, stmt statement.Statement) response.Response
 }
 
 type DefaultExecutor struct {
@@ -26,7 +27,7 @@ func New(catalog *catalog.Catalog) *DefaultExecutor {
 	}
 }
 
-func (e *DefaultExecutor) Execute(ctx context.Context, stmt statement.Statement) (any, error) {
+func (e *DefaultExecutor) Execute(ctx context.Context, stmt statement.Statement) response.Response {
 	switch s := stmt.(type) {
 	case *statement.CreateTableStatement:
 		return e.executeCreateTable(ctx, s)
@@ -44,5 +45,5 @@ func (e *DefaultExecutor) Execute(ctx context.Context, stmt statement.Statement)
 		return e.executeSelect(ctx, s)
 	}
 
-	return nil, ErrUnsupportedStatement
+	return response.NewErrorResponse("unsupported statement")
 }

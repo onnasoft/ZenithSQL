@@ -8,14 +8,20 @@ import (
 )
 
 type InsertResponse struct {
-	Success bool   `msgpack:"success"`
-	Message string `msgpack:"message"`
+	Success      bool          `msgpack:"success"`
+	Message      string        `msgpack:"message"`
+	InsertedIDs  []interface{} `msgpack:"inserted_ids"`
+	RowsAffected int64         `msgpack:"rows_affected"`
+	DurationMs   int64         `msgpack:"duration_ms"`
 }
 
-func NewInsertResponse(success bool, message string) *InsertResponse {
+func NewInsertResponse(success bool, message string, insertedIDs []interface{}, rowsAffected int64, durationMs int64) *InsertResponse {
 	return &InsertResponse{
-		Success: success,
-		Message: message,
+		Success:      success,
+		Message:      message,
+		InsertedIDs:  insertedIDs,
+		RowsAffected: rowsAffected,
+		DurationMs:   durationMs,
 	}
 }
 
@@ -25,6 +31,18 @@ func (r *InsertResponse) IsSuccess() bool {
 
 func (r *InsertResponse) GetMessage() string {
 	return r.Message
+}
+
+func (r *InsertResponse) GetInsertedIDs() []interface{} {
+	return r.InsertedIDs
+}
+
+func (r *InsertResponse) GetRowsAffected() int64 {
+	return r.RowsAffected
+}
+
+func (r *InsertResponse) GetDurationMs() int64 {
+	return r.DurationMs
 }
 
 func (r *InsertResponse) Protocol() protocol.MessageType {
@@ -40,5 +58,12 @@ func (r *InsertResponse) ToBytes() ([]byte, error) {
 }
 
 func (r *InsertResponse) String() string {
-	return fmt.Sprintf("InsertResponse{Success: %t, Message: %s}", r.Success, r.Message)
+	return fmt.Sprintf(
+		"InsertResponse{Success: %t, Rows: %d, Duration: %dms, IDs: %v, Message: %s}",
+		r.Success,
+		r.RowsAffected,
+		r.DurationMs,
+		r.InsertedIDs,
+		r.Message,
+	)
 }

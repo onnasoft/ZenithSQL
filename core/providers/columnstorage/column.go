@@ -89,5 +89,11 @@ func (c *Column) Truncate() error {
 }
 
 func (c *Column) Close() error {
+	if c.MMapFile != nil {
+		if err := c.MMapFile.Close(); err != nil {
+			return fmt.Errorf("failed to close mmap file: %w", err)
+		}
+		c.MMapFile = nil
+	}
 	return nil
 }
