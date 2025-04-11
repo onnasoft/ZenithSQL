@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	maxGrowRetries = 3
+	maxGrowRetries  = 3
+	errInvalidRange = "invalid range: offset %d, length %d (file size %d)"
 )
 
 type MMapFile struct {
@@ -122,7 +123,7 @@ func (m *MMapFile) FreeView(view []byte) {
 	defer m.viewsMux.Unlock()
 
 	for info := range m.views {
-		if &info.data[0] == &view[0] { // Compare underlying pointers
+		if &info.data[0] == &view[0] {
 			info.refCount--
 			if info.refCount == 0 {
 				syscall.Munmap(info.data)
@@ -138,15 +139,13 @@ func (m *MMapFile) tryGrow(requiredSize int) bool {
 		return true
 	}
 
-	// Calculate new size (round up to nearest pageSize multiple)
 	newSize := ((requiredSize + m.pageSize - 1) / m.pageSize) * m.pageSize
 
-	// Try growing the file
 	for i := 0; i < maxGrowRetries; i++ {
 		if err := m.growFile(newSize); err == nil {
 			return true
 		}
-		// If we get ENOMEM, try with smaller increment
+
 		newSize = m.size + m.pageSize
 		if newSize >= requiredSize {
 			break
@@ -157,22 +156,17 @@ func (m *MMapFile) tryGrow(requiredSize int) bool {
 }
 
 func (m *MMapFile) growFile(newSize int) error {
-	// Unmap existing mapping
 	if err := syscall.Munmap(m.data); err != nil {
 		return err
 	}
 
-	// Resize file
 	if err := m.file.Truncate(int64(newSize)); err != nil {
-		// Try to remap original size if grow fails
 		syscall.Mmap(int(m.file.Fd()), 0, m.size, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		return err
 	}
 
-	// Create new mapping
 	data, err := syscall.Mmap(int(m.file.Fd()), 0, newSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
-		// Try to remap original size if new mapping fails
 		syscall.Mmap(int(m.file.Fd()), 0, m.size, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		return err
 	}
@@ -182,7 +176,6 @@ func (m *MMapFile) growFile(newSize int) error {
 	return nil
 }
 
-// Sync forces all data to disk
 func (m *MMapFile) Sync() error {
 	m.growMux.RLock()
 	defer m.growMux.RUnlock()
@@ -190,21 +183,18 @@ func (m *MMapFile) Sync() error {
 	return m.syncRange(0, m.size)
 }
 
-// SyncRange synchronizes specific range to disk
 func (m *MMapFile) SyncRange(offset, length int) error {
 	m.growMux.RLock()
 	defer m.growMux.RUnlock()
 
-	// Validate range
 	if offset < 0 || length <= 0 || offset+length > m.size {
-		return fmt.Errorf("invalid range: offset %d, length %d (file size %d)",
+		return fmt.Errorf(errInvalidRange,
 			offset, length, m.size)
 	}
 
 	return m.syncRange(offset, length)
 }
 
-// syncRange internal implementation with bounds checking
 func (m *MMapFile) syncRange(offset, length int) error {
 	pageSize := syscall.Getpagesize()
 	alignedOffset := offset - (offset % pageSize)
@@ -222,14 +212,13 @@ func (m *MMapFile) syncRange(offset, length int) error {
 	return nil
 }
 
-// AsyncSyncRange synchronizes range asynchronously
 func (m *MMapFile) AsyncSyncRange(offset, length int) error {
 	m.growMux.RLock()
 	defer m.growMux.RUnlock()
 
 	// Validate range
 	if offset < 0 || length <= 0 || offset+length > m.size {
-		return fmt.Errorf("invalid range: offset %d, length %d (file size %d)",
+		return fmt.Errorf(errInvalidRange,
 			offset, length, m.size)
 	}
 
@@ -245,12 +234,10 @@ func (m *MMapFile) AsyncSyncRange(offset, length int) error {
 	return nil
 }
 
-// Close unmaps and closes the file
 func (m *MMapFile) Close() error {
 	m.growMux.Lock()
 	defer m.growMux.Unlock()
 
-	// Clean up all views
 	m.viewsMux.Lock()
 	for info := range m.views {
 		syscall.Munmap(info.data)
@@ -266,21 +253,19 @@ func (m *MMapFile) Close() error {
 
 func (m *MMapFile) ReadAt(offset int, length int) ([]byte, error) {
 	if offset < 0 || length <= 0 || offset+length > m.size {
-		return nil, fmt.Errorf("invalid range: offset %d, length %d (file size %d)",
+		return nil, fmt.Errorf(errInvalidRange,
 			offset, length, m.size)
 	}
 
 	return m.data[offset : offset+length], nil
 }
 
-// Data returns the memory mapped bytes
 func (m *MMapFile) Data() []byte {
 	m.growMux.RLock()
 	defer m.growMux.RUnlock()
 	return m.data
 }
 
-// Size returns current mapped size
 func (m *MMapFile) Size() int {
 	m.growMux.RLock()
 	defer m.growMux.RUnlock()
