@@ -10,7 +10,7 @@ import (
 type ColumnReader struct {
 	columnsData map[string]*ColumnData
 	current     int64
-	stats       *storage.StorageStats
+	totalRows   int64
 }
 
 func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) (*ColumnReader, error) {
@@ -28,7 +28,7 @@ func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) (*
 
 	return &ColumnReader{
 		current:     -1,
-		stats:       stats,
+		totalRows:   stats.TotalRows,
 		columnsData: columnsData,
 	}, nil
 }
@@ -42,7 +42,7 @@ func (r *ColumnReader) ColumnsData() map[string]storage.ColumnData {
 }
 
 func (r *ColumnReader) Next() bool {
-	if r.current+1 >= r.stats.TotalRows {
+	if r.current+1 >= r.totalRows {
 		return false
 	}
 	r.current++
@@ -50,7 +50,7 @@ func (r *ColumnReader) Next() bool {
 }
 
 func (r *ColumnReader) See(id int64) error {
-	if id <= 0 || id > r.stats.TotalRows {
+	if id <= 0 || id > r.totalRows {
 		return fmt.Errorf("invalid id: %d", id)
 	}
 	r.current = id - 1
@@ -75,7 +75,7 @@ func (r *ColumnReader) Values() map[string]interface{} {
 }
 
 func (r *ColumnReader) FastGetValue(col storage.ColumnData, value interface{}) (bool, error) {
-	if r.current < 0 || r.current >= r.stats.TotalRows {
+	if r.current < 0 || r.current >= r.totalRows {
 		return false, fmt.Errorf("invalid current index: %d", r.current)
 	}
 
@@ -87,7 +87,7 @@ func (r *ColumnReader) FastGetValue(col storage.ColumnData, value interface{}) (
 	recordLength := colData.Length + 2
 	offset := r.current * int64(recordLength)
 
-	if r.current >= r.stats.TotalRows {
+	if r.current >= r.totalRows {
 		return false, fmt.Errorf("invalid current index: %d", r.current)
 	}
 
