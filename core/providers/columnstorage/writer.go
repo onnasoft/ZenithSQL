@@ -91,11 +91,11 @@ func (w *ColumnWriter) writeFieldInternal(id int64, name string, value interface
 	recordLength := col.Length + 2 // +2 for status and newline
 	offset := id * int64(recordLength)
 
-	if !col.MMapFile.CanWrite(int(offset), recordLength) {
+	if !col.CanWrite(int(offset), recordLength) {
 		return fmt.Errorf("record exceeds buffer capacity for column %s", name)
 	}
 
-	data := col.MMapFile.Data()[offset : offset+int64(recordLength)]
+	data := col.Data()[offset : offset+int64(recordLength)]
 	if value == nil {
 		data[statusByteOffset] = 0
 		data[col.Length+1] = '\n'
@@ -122,7 +122,7 @@ func (w *ColumnWriter) Flush() error {
 
 	// Sync all columns
 	for name, col := range w.columns {
-		if err := col.MMapFile.Sync(); err != nil {
+		if err := col.Sync(); err != nil {
 			return fmt.Errorf("failed to flush column %s: %w", name, err)
 		}
 	}
@@ -196,11 +196,11 @@ func (w *ColumnWriter) Commit() error {
 			offset := r.Start * int64(recordLength)
 			length := (r.End - r.Start + 1) * int64(recordLength)
 
-			if offset+length > int64(len(col.MMapFile.Data())) {
+			if offset+length > int64(len(col.Data())) {
 				continue
 			}
 
-			if err := col.MMapFile.SyncRange(int(offset), int(length)); err != nil {
+			if err := col.SyncRange(int(offset), int(length)); err != nil {
 				return fmt.Errorf("failed to sync column %s at offset %d: %w",
 					name, offset, err)
 			}
@@ -230,8 +230,8 @@ func (w *ColumnWriter) rollbackInternal() error {
 			offset := id * int64(recordLength)
 
 			// Check bounds before writing
-			if offset < int64(len(col.MMapFile.Data())) {
-				col.MMapFile.Data()[offset] = 0 // Reset status byte
+			if offset < int64(len(col.Data())) {
+				col.Data()[offset] = 0 // Reset status byte
 			}
 		}
 	}

@@ -28,7 +28,7 @@ type Column struct {
 	Validators []validate.Validator
 
 	BasePath string
-	MMapFile *buffer.MMapFile
+	*buffer.MMapFile
 }
 
 func (c *Column) Type() types.DataType {

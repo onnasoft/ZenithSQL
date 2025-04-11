@@ -13,7 +13,7 @@ var log = logrus.New()
 
 func main() {
 	catalog := setupDatabaseAndTable()
-	defer catalog.Close()
+	//defer catalog.Close()
 	users := []map[string]interface{}{
 		{
 			"name":    "Javier Xar",
@@ -77,6 +77,16 @@ func main() {
 	}
 
 	result, ok := executor.Execute(context.Background(), stmt).(*response.SelectResponse)
+	if !result.IsSuccess() {
+		log.Fatalf("error executing select statement: %v", result.GetMessage())
+	}
+	if !ok {
+		log.Fatalf("error casting response to SelectResponse")
+	}
+
+	log.Infof("Select executed successfully: %v", result.Rows)
+
+	result, ok = executor.Execute(context.Background(), stmt).(*response.SelectResponse)
 	if !result.IsSuccess() {
 		log.Fatalf("error executing select statement: %v", result.GetMessage())
 	}

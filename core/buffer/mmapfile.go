@@ -97,8 +97,8 @@ func (m *MMapFile) CanWrite(offset, length int) bool {
 }
 
 func (m *MMapFile) AllocateView() ([]byte, error) {
-	m.growMux.RLock()
-	defer m.growMux.RUnlock()
+	//m.growMux.RLock()
+	//defer m.growMux.RUnlock()
 
 	view, err := syscall.Mmap(int(m.file.Fd()), 0, m.size, syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {

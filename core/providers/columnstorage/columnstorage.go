@@ -2,6 +2,7 @@ package columnstorage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -59,8 +60,10 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 		dataType := types.NewDataType(meta.Type)
 		col, err := NewColumn(meta.Name, dataType, meta.Length, meta.Required, s.BasePath)
 		if err != nil {
-			s.Logger.Error("Failed to create column ", err)
-			continue
+			return fmt.Errorf("failed to initialize column %s: %w", meta.Name, err)
+		}
+		if col.MMapFile == nil {
+			return fmt.Errorf("column %s has nil MMapFile", meta.Name)
 		}
 		columns[meta.Name] = col
 	}
@@ -86,6 +89,7 @@ func (s *ColumnStorage) Truncate() error {
 }
 
 func (s *ColumnStorage) Close() error {
+	fmt.Println("Closing column storage")
 	for _, col := range s.columns {
 		if err := col.Close(); err != nil {
 			s.Logger.WithError(err).Error("Failed to close column")

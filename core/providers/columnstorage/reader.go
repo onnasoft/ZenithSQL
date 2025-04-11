@@ -16,7 +16,7 @@ type ColumnReader struct {
 func NewColumnReader(columns map[string]*Column, stats *storage.StorageStats) (*ColumnReader, error) {
 	columnsData := make(map[string]*ColumnData, len(columns))
 	for name, col := range columns {
-		data, err := col.MMapFile.AllocateView()
+		data, err := col.AllocateView()
 		if err != nil {
 			return nil, fmt.Errorf("failed to allocate view for column %s: %w", name, err)
 		}
@@ -138,14 +138,9 @@ func (r *ColumnReader) GetValue(field string) (interface{}, error) {
 
 func (r *ColumnReader) Close() error {
 	for _, col := range r.columnsData {
-		col.MMapFile.FreeView(col.data)
+		col.FreeView(col.data)
 	}
 
-	for _, col := range r.columnsData {
-		if err := col.Close(); err != nil {
-			return fmt.Errorf("failed to close column %s: %w", col.Name(), err)
-		}
-	}
 	return nil
 }
 
