@@ -53,12 +53,8 @@ func (c *ColumnCursorFromIds) Scan(dest map[string]interface{}) error {
 	return nil
 }
 
-func (c *ColumnCursorFromIds) ScanField(field string) interface{} {
-	val, err := c.reader.GetValue(field)
-	if err != nil {
-		c.err = err
-	}
-	return val
+func (c *ColumnCursorFromIds) ScanField(field string) (interface{}, error) {
+	return c.reader.GetValue(field)
 }
 
 func (c *ColumnCursorFromIds) FastScanField(col storage.ColumnData, value interface{}) (bool, error) {
@@ -73,18 +69,18 @@ func (c *ColumnCursorFromIds) Close() error {
 	return c.reader.Close()
 }
 
-func (c *ColumnCursorFromIds) Count() int64 {
+func (c *ColumnCursorFromIds) Count() (int64, error) {
 	if c.limit >= 0 && c.skip < len(c.ids) {
 		remaining := len(c.ids) - c.skip
 		if remaining > c.limit {
-			return int64(c.limit)
+			return int64(c.limit), nil
 		}
-		return int64(remaining)
+		return int64(remaining), nil
 	}
 	if c.skip >= len(c.ids) {
-		return 0
+		return 0, nil
 	}
-	return int64(len(c.ids) - c.skip)
+	return int64(len(c.ids) - c.skip), nil
 }
 
 func (c *ColumnCursorFromIds) Limit(limit int64) {

@@ -23,7 +23,21 @@ func (e *DefaultExecutor) executeSelect(ctx context.Context, stmt *statement.Sel
 
 	rows := []map[string]interface{}{}
 	for cursor.Next() {
+		select {
+		case <-ctx.Done():
+			return response.NewSelectResponse(false, "context done", nil)
+		default:
+		}
+
 		record := map[string]interface{}{}
+		for _, column := range stmt.Columns {
+			value, err := cursor.ScanField(column)
+			if err != nil {
+				return response.NewSelectResponse(false, err.Error(), nil)
+			}
+			record[column] = value
+		}
+
 		err := cursor.Scan(record)
 		if err != nil {
 			return response.NewSelectResponse(false, err.Error(), nil)

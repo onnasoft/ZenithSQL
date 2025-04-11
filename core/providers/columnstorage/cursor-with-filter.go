@@ -10,7 +10,6 @@ import (
 type ColumnCursorWithFilter struct {
 	base   storage.Cursor
 	filter *filters.Filter
-	err    error
 }
 
 func NewColumnCursorWithFilter(cursor storage.Cursor, filter *filters.Filter) *ColumnCursorWithFilter {
@@ -32,7 +31,6 @@ func (c *ColumnCursorWithFilter) Next() bool {
 	for c.base.Next() {
 		ok, err := c.filter.Execute()
 		if err != nil {
-			c.err = err
 			return false
 		}
 		if ok {
@@ -47,7 +45,7 @@ func (c *ColumnCursorWithFilter) Scan(dest map[string]interface{}) error {
 	return c.base.Scan(dest)
 }
 
-func (c *ColumnCursorWithFilter) ScanField(field string) interface{} {
+func (c *ColumnCursorWithFilter) ScanField(field string) (interface{}, error) {
 	return c.base.ScanField(field)
 }
 
@@ -55,18 +53,11 @@ func (c *ColumnCursorWithFilter) FastScanField(col storage.ColumnData, value int
 	return c.base.FastScanField(col, value)
 }
 
-func (c *ColumnCursorWithFilter) Err() error {
-	if c.err != nil {
-		return c.err
-	}
-	return c.base.Err()
-}
-
 func (c *ColumnCursorWithFilter) Close() error {
 	return c.base.Close()
 }
 
-func (c *ColumnCursorWithFilter) Count() int64 {
+func (c *ColumnCursorWithFilter) Count() (int64, error) {
 	var count int64
 	filter := c.filter
 
@@ -74,14 +65,13 @@ func (c *ColumnCursorWithFilter) Count() int64 {
 		fmt.Println("Executing filter")
 		ok, err := filter.Execute()
 		if err != nil {
-			c.err = err
-			break
+			return 0, err
 		}
 		if ok {
 			count++
 		}
 	}
-	return count
+	return count, nil
 }
 
 func (c *ColumnCursorWithFilter) Limit(limit int64) {
