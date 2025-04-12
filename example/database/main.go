@@ -58,7 +58,12 @@ func main() {
 	}
 	defer cursor.Close()
 
-	cursor, err = cursor.WithFilter(stmt.Where)
+	/*cursor, err = cursor.WithFilter(stmt.Where)
+	if err != nil {
+		log.Fatalf("error getting cursor: %v", err)
+	}*/
+
+	cursor, err = cursor.WithGroupBy(stmt.GroupBy, stmt.Aggregations)
 	if err != nil {
 		log.Fatalf("error getting cursor: %v", err)
 	}

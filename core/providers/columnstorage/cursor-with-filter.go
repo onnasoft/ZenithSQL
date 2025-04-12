@@ -1,8 +1,6 @@
 package columnstorage
 
 import (
-	"fmt"
-
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/io/statement"
@@ -63,7 +61,6 @@ func (c *ColumnCursorWithFilter) Count() (int64, error) {
 	filter := c.filter
 
 	for c.base.Next() {
-		fmt.Println("Executing filter")
 		ok, err := filter.Execute()
 		if err != nil {
 			return 0, err
@@ -73,14 +70,6 @@ func (c *ColumnCursorWithFilter) Count() (int64, error) {
 		}
 	}
 	return count, nil
-}
-
-func (c *ColumnCursorWithFilter) Limit(limit int64) {
-	c.base.Limit(limit)
-}
-
-func (c *ColumnCursorWithFilter) Skip(offset int64) {
-	c.base.Skip(offset)
 }
 
 func (c *ColumnCursorWithFilter) Reader() storage.Reader {
@@ -95,6 +84,14 @@ func (c *ColumnCursorWithFilter) WithFilter(filter *filters.Filter) (storage.Cur
 	return newColumnCursorWithFilter(c, filter)
 }
 
-func (c *ColumnCursorWithFilter) WithAggregations(aggregations []statement.Aggregation) (storage.Cursor, error) {
-	return newColumnCursorWithAggregations(c, aggregations)
+func (c *ColumnCursorWithFilter) WithGroupBy(groupBy []string, aggregations []statement.Aggregation) (storage.Cursor, error) {
+	return newColumnCursorWithGroupBy(c, groupBy, aggregations)
+}
+
+func (c *ColumnCursorWithFilter) WithLimit(limit int64) (storage.Cursor, error) {
+	return newColumnCursorWithLimit(c, limit)
+}
+
+func (c *ColumnCursorWithFilter) WithSkip(skip int64) (storage.Cursor, error) {
+	return newColumnCursorWithSkip(c, skip)
 }

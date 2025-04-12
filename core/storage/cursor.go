@@ -14,10 +14,10 @@ type Cursor interface {
 	FastScanField(col ColumnData, value interface{}) (bool, error)
 	Close() error
 	Count() (int64, error)
-	Limit(limit int64)
-	Skip(offset int64)
 	Reader() Reader
 	WithIDs(ids []int64) (Cursor, error)
 	WithFilter(filter *filters.Filter) (Cursor, error)
-	WithAggregations(agg []statement.Aggregation) (Cursor, error)
+	WithGroupBy(groupBy []string, aggregations []statement.Aggregation) (Cursor, error)
+	WithLimit(limit int64) (Cursor, error)
+	WithSkip(skip int64) (Cursor, error)
 }

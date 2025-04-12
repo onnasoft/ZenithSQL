@@ -1,8 +1,6 @@
 package columnstorage
 
 import (
-	"fmt"
-
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/io/statement"
@@ -108,9 +106,17 @@ func (c *ColumnCursorFromIds) WithIDs(ids []int64) (storage.Cursor, error) {
 }
 
 func (c *ColumnCursorFromIds) WithFilter(filter *filters.Filter) (storage.Cursor, error) {
-	return nil, fmt.Errorf("not implemented")
+	return newColumnCursorWithFilter(c, filter)
 }
 
-func (c *ColumnCursorFromIds) WithAggregations(agg []statement.Aggregation) (storage.Cursor, error) {
-	return nil, fmt.Errorf("not implemented")
+func (c *ColumnCursorFromIds) WithGroupBy(groupBy []string, aggregations []statement.Aggregation) (storage.Cursor, error) {
+	return newColumnCursorWithGroupBy(c, groupBy, aggregations)
+}
+
+func (c *ColumnCursorFromIds) WithLimit(limit int64) (storage.Cursor, error) {
+	return newColumnCursorWithLimit(c, limit)
+}
+
+func (c *ColumnCursorFromIds) WithSkip(skip int64) (storage.Cursor, error) {
+	return newColumnCursorWithSkip(c, skip)
 }

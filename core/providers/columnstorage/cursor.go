@@ -97,6 +97,14 @@ func (c *ColumnCursor) WithFilter(filter *filters.Filter) (storage.Cursor, error
 	return newColumnCursorWithFilter(c, filter)
 }
 
-func (c *ColumnCursor) WithAggregations(aggregations []statement.Aggregation) (storage.Cursor, error) {
-	return newColumnCursorWithAggregations(c, aggregations)
+func (c *ColumnCursor) WithGroupBy(groupBy []string, aggregations []statement.Aggregation) (storage.Cursor, error) {
+	return newColumnCursorWithGroupBy(c, groupBy, aggregations)
+}
+
+func (c *ColumnCursor) WithLimit(limit int64) (storage.Cursor, error) {
+	return newColumnCursorWithLimit(c, limit)
+}
+
+func (c *ColumnCursor) WithSkip(skip int64) (storage.Cursor, error) {
+	return newColumnCursorWithSkip(c, skip)
 }
