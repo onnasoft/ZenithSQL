@@ -7,13 +7,14 @@ import (
 	"github.com/asaskevich/govalidator"
 	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/io/protocol"
+	"github.com/onnasoft/ZenithSQL/model/aggregate"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 type Aggregation struct {
-	Function string `msgpack:"function" valid:"required,matches(^(SUM|AVG|COUNT|MAX|MIN|GROUP_CONCAT)$)"`
-	Column   string `msgpack:"column" valid:"required"`
-	Alias    string `msgpack:"alias"`
+	Function aggregate.AggregateType `msgpack:"function" valid:"required,matches(^(SUM|AVG|COUNT|MAX|MIN|GROUP_CONCAT)$)"`
+	Column   string                  `msgpack:"column" valid:"required"`
+	Alias    string                  `msgpack:"alias"`
 }
 
 type SelectStatement struct {

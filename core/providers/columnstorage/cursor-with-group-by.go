@@ -6,20 +6,37 @@ import (
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/io/statement"
+	"github.com/onnasoft/ZenithSQL/model/aggregate"
 )
 
 type ColumnCursorWithGroupBy struct {
 	base     storage.Cursor
 	groupBy  []string
 	agg      []statement.Aggregation
-	returned int64
+	aggFnMap map[string]aggregate.Aggregate
 }
 
 func newColumnCursorWithGroupBy(cursor storage.Cursor, groupBy []string, aggregation []statement.Aggregation) (*ColumnCursorWithGroupBy, error) {
+	aggFnMap := make(map[string]aggregate.Aggregate)
+	scanMap := cursor.Reader().ScanMap()
+	for _, agg := range aggregation {
+		scanner, ok := scanMap[agg.Column]
+		if !ok {
+			return nil, fmt.Errorf("column %s not found in cursor", agg.Column)
+		}
+
+		fn, err := aggregate.New(scanner.Type, agg.Function, scanner)
+		if err != nil {
+			return nil, fmt.Errorf("error creating aggregate function: %v", err)
+		}
+		aggFnMap[agg.Column] = fn
+	}
+
 	return &ColumnCursorWithGroupBy{
-		base:    cursor,
-		agg:     aggregation,
-		groupBy: groupBy,
+		base:     cursor,
+		agg:      aggregation,
+		groupBy:  groupBy,
+		aggFnMap: aggFnMap,
 	}, nil
 }
 
@@ -28,6 +45,7 @@ func (c *ColumnCursorWithGroupBy) ColumnsData() map[string]storage.ColumnData {
 }
 
 func (c *ColumnCursorWithGroupBy) Next() bool {
+
 	dataMap := make(map[string]interface{})
 
 	for c.base.Next() {
