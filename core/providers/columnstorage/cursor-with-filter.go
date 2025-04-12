@@ -5,6 +5,7 @@ import (
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/filters"
+	"github.com/onnasoft/ZenithSQL/io/statement"
 )
 
 type ColumnCursorWithFilter struct {
@@ -12,7 +13,7 @@ type ColumnCursorWithFilter struct {
 	filter *filters.Filter
 }
 
-func NewColumnCursorWithFilter(cursor storage.Cursor, filter *filters.Filter) *ColumnCursorWithFilter {
+func newColumnCursorWithFilter(cursor storage.Cursor, filter *filters.Filter) (*ColumnCursorWithFilter, error) {
 	c := &ColumnCursorWithFilter{
 		base:   cursor,
 		filter: filter,
@@ -20,7 +21,7 @@ func NewColumnCursorWithFilter(cursor storage.Cursor, filter *filters.Filter) *C
 
 	c.filter.Prepare(cursor.Reader().ScanMap())
 
-	return c
+	return c, nil
 }
 
 func (c *ColumnCursorWithFilter) ColumnsData() map[string]storage.ColumnData {
@@ -84,4 +85,16 @@ func (c *ColumnCursorWithFilter) Skip(offset int64) {
 
 func (c *ColumnCursorWithFilter) Reader() storage.Reader {
 	return c.base.Reader()
+}
+
+func (c *ColumnCursorWithFilter) WithIDs(ids []int64) (storage.Cursor, error) {
+	return newColumnCursorFromIds(c, ids)
+}
+
+func (c *ColumnCursorWithFilter) WithFilter(filter *filters.Filter) (storage.Cursor, error) {
+	return newColumnCursorWithFilter(c, filter)
+}
+
+func (c *ColumnCursorWithFilter) WithAggregations(aggregations []statement.Aggregation) (storage.Cursor, error) {
+	return newColumnCursorWithAggregations(c, aggregations)
 }

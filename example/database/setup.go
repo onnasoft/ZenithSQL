@@ -8,7 +8,7 @@ import (
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/types"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/sirupsen/logrus"
 )
 
@@ -44,12 +44,12 @@ func setupDatabaseAndTable() *catalog.Catalog {
 
 	// Crear nueva tabla
 	tableConfig := &storage.TableConfig{
-		Fields: []storage.FieldMeta{
+		Fields: []fields.FieldMeta{
 			{
 				Name:   "name",
-				Type:   types.String,
+				Type:   fields.String,
 				Length: 100,
-				Validators: []storage.ValidatorInfo{
+				Validators: []fields.ValidatorInfo{
 					{
 						Type:   "stringLength",
 						Params: json.RawMessage(`{"min": 1, "max": 100}`),
@@ -58,9 +58,9 @@ func setupDatabaseAndTable() *catalog.Catalog {
 			},
 			{
 				Name:   "email",
-				Type:   types.String,
+				Type:   fields.String,
 				Length: 100,
-				Validators: []storage.ValidatorInfo{
+				Validators: []fields.ValidatorInfo{
 					{
 						Type:   "email",
 						Params: json.RawMessage(`{}`),
@@ -69,15 +69,15 @@ func setupDatabaseAndTable() *catalog.Catalog {
 			},
 			{
 				Name:       "country",
-				Type:       types.String,
+				Type:       fields.String,
 				Length:     100,
-				Validators: []storage.ValidatorInfo{},
+				Validators: []fields.ValidatorInfo{},
 			},
 			{
 				Name:       "age",
-				Type:       types.Int8,
+				Type:       fields.Int8,
 				Length:     8,
-				Validators: []storage.ValidatorInfo{},
+				Validators: []fields.ValidatorInfo{},
 			},
 		},
 	}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/onnasoft/ZenithSQL/core/buffer"
-	"github.com/onnasoft/ZenithSQL/model/types"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/onnasoft/ZenithSQL/validate"
 )
 
@@ -22,7 +22,7 @@ func (c *ColumnData) Name() string {
 
 type Column struct {
 	name string
-	types.DataType
+	fields.DataType
 	Length     int
 	Required   bool
 	Validators []validate.Validator
@@ -31,7 +31,7 @@ type Column struct {
 	*buffer.MMapFile
 }
 
-func (c *Column) Type() types.DataType {
+func (c *Column) Type() fields.DataType {
 	return c.DataType
 }
 
@@ -43,7 +43,7 @@ func (c *Column) Name() string {
 	return c.name
 }
 
-func NewColumn(name string, dataType types.DataType, length int, required bool, basePath string) (*Column, error) {
+func NewColumn(name string, dataType fields.DataType, length int, required bool, basePath string) (*Column, error) {
 	effectiveLength, err := dataType.ResolveLength(length)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve length for data type %s: %w", dataType, err)

@@ -16,7 +16,7 @@ import (
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/types"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 )
@@ -74,15 +74,15 @@ func main() {
 	}
 
 	table, err := schema.CreateTable("temperatures", &storage.TableConfig{
-		Fields: []storage.FieldMeta{
+		Fields: []fields.FieldMeta{
 			{
 				Name:   "city",
-				Type:   types.String,
+				Type:   fields.String,
 				Length: 100,
 			},
 			{
 				Name:   "temperature",
-				Type:   types.Float64,
+				Type:   fields.Float64,
 				Length: 8,
 			},
 		},

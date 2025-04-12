@@ -1,4 +1,4 @@
-package types
+package fields
 
 type DataType interface {
 	ResolveLength(length int) (int, error)

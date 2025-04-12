@@ -7,7 +7,7 @@ import (
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/types"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/sirupsen/logrus"
 )
 
@@ -40,7 +40,7 @@ func main() {
 	tests := []Filters{
 		{
 			Scanner: buffer.Scanner{
-				Type: types.Int8Type{},
+				Type: fields.Int8Type{},
 				Scan: func(value interface{}) (bool, error) {
 					if v, ok := value.(*int8); ok {
 						*v = int8(12)

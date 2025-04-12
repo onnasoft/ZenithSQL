@@ -5,20 +5,20 @@ import (
 	"fmt"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/io/protocol"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 type CreateTableStatement struct {
-	Database   string              `msgpack:"database" json:"database" valid:"required,alphanumunderscore"`
-	Schema     string              `msgpack:"schema" json:"schema" valid:"required,alphanumunderscore"`
-	TableName  string              `msgpack:"table_name" json:"table_name" valid:"required,alphanumunderscore"`
-	FieldsMeta []storage.FieldMeta `msgpack:"fields_meta" json:"fields_meta"`
-	Storage    string              `msgpack:"storage" json:"storage"`
+	Database   string             `msgpack:"database" json:"database" valid:"required,alphanumunderscore"`
+	Schema     string             `msgpack:"schema" json:"schema" valid:"required,alphanumunderscore"`
+	TableName  string             `msgpack:"table_name" json:"table_name" valid:"required,alphanumunderscore"`
+	FieldsMeta []fields.FieldMeta `msgpack:"fields_meta" json:"fields_meta"`
+	Storage    string             `msgpack:"storage" json:"storage"`
 }
 
-func NewCreateTableStatement(database, schema, tableName string, columns []storage.FieldMeta, storage string) (*CreateTableStatement, error) {
+func NewCreateTableStatement(database, schema, tableName string, columns []fields.FieldMeta, storage string) (*CreateTableStatement, error) {
 	stmt := &CreateTableStatement{
 		TableName:  tableName,
 		FieldsMeta: columns,

@@ -1,10 +1,7 @@
 package main
 
 import (
-	"context"
-
-	"github.com/onnasoft/ZenithSQL/core/executor"
-	"github.com/onnasoft/ZenithSQL/io/response"
+	"github.com/onnasoft/ZenithSQL/io/filters"
 	"github.com/onnasoft/ZenithSQL/io/statement"
 	"github.com/sirupsen/logrus"
 )
@@ -13,7 +10,7 @@ var log = logrus.New()
 
 func main() {
 	catalog := setupDatabaseAndTable()
-	//defer catalog.Close()
+	defer catalog.Close()
 	users := []map[string]interface{}{
 		{
 			"name":    "Javier Xar",
@@ -30,33 +27,6 @@ func main() {
 	}
 
 	insertRecords(catalog, users)
-	executor := executor.New(catalog)
-
-	/*
-		filter := filters.NewCondition("age", filters.Equal, int8(12))
-
-		stmt, err := statement.NewSelectStatement(statement.SelectStatementConfig{
-			Database:  "testdb",
-			Schema:    "public",
-			TableName: "users",
-			Where:     filter,
-			Columns:   []string{"name", "email"},
-		})
-		if err != nil {
-			log.Fatalf("error creating select statement: %v", err)
-		}
-
-
-
-		result, ok := executor.Execute(context.Background(), stmt).(*response.SelectResponse)
-		if !result.IsSuccess() {
-			log.Fatalf("error executing select statement: %v", result.GetMessage())
-		}
-		if !ok {
-			log.Fatalf("error casting response to SelectResponse")
-		}
-
-		log.Infof("Select executed successfully: %v", result.Rows)*/
 
 	stmt, err := statement.NewSelectStatement(statement.SelectStatementConfig{
 		Database:  "testdb",
@@ -71,28 +41,37 @@ func main() {
 			},
 		},
 		GroupBy: []string{"name"},
+		Where:   filters.NewCondition("age", filters.Equal, int8(12)),
 	})
 	if err != nil {
 		log.Fatalf("error creating select statement: %v", err)
 	}
 
-	result, ok := executor.Execute(context.Background(), stmt).(*response.SelectResponse)
-	if !result.IsSuccess() {
-		log.Fatalf("error executing select statement: %v", result.GetMessage())
-	}
-	if !ok {
-		log.Fatalf("error casting response to SelectResponse")
+	table, err := catalog.GetTable("testdb", "public", "users")
+	if err != nil {
+		log.Fatalf("error getting table: %v", err)
 	}
 
-	log.Infof("Select executed successfully: %v", result.Rows)
-
-	result, ok = executor.Execute(context.Background(), stmt).(*response.SelectResponse)
-	if !result.IsSuccess() {
-		log.Fatalf("error executing select statement: %v", result.GetMessage())
+	cursor, err := table.Cursor()
+	if err != nil {
+		log.Fatalf("error getting cursor: %v", err)
 	}
-	if !ok {
-		log.Fatalf("error casting response to SelectResponse")
+	defer cursor.Close()
+
+	cursor, err = cursor.WithFilter(stmt.Where)
+	if err != nil {
+		log.Fatalf("error getting cursor: %v", err)
 	}
 
-	log.Infof("Select executed successfully: %v", result.Rows)
+	for cursor.Next() {
+		record := make(map[string]interface{})
+		for _, column := range stmt.Columns {
+			value, err := cursor.ScanField(column)
+			if err != nil {
+				log.Fatalf("error scanning field: %v", err)
+			}
+			record[column] = value
+		}
+		log.Infof("Record: %v", record)
+	}
 }

@@ -1,6 +1,10 @@
 package columnstorage
 
-import "github.com/onnasoft/ZenithSQL/core/storage"
+import (
+	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/io/filters"
+	"github.com/onnasoft/ZenithSQL/io/statement"
+)
 
 type ColumnCursor struct {
 	reader *ColumnReader
@@ -83,4 +87,16 @@ func (c *ColumnCursor) Skip(offset int64) {
 
 func (c *ColumnCursor) Reader() storage.Reader {
 	return c.reader
+}
+
+func (c *ColumnCursor) WithIDs(ids []int64) (storage.Cursor, error) {
+	return newColumnCursorFromIds(c, ids)
+}
+
+func (c *ColumnCursor) WithFilter(filter *filters.Filter) (storage.Cursor, error) {
+	return newColumnCursorWithFilter(c, filter)
+}
+
+func (c *ColumnCursor) WithAggregations(aggregations []statement.Aggregation) (storage.Cursor, error) {
+	return newColumnCursorWithAggregations(c, aggregations)
 }

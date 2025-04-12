@@ -15,16 +15,18 @@ func (e *DefaultExecutor) executeSelect(ctx context.Context, stmt *statement.Sel
 	if err != nil {
 		return response.NewSelectResponse(false, err.Error(), nil)
 	}
-	var cursor storage.Cursor
-	if stmt.Where == nil {
-		cursor, err = table.Cursor()
-	} else {
-		cursor, err = table.CursorWithFilter(stmt.Where)
-	}
+	cursor, err := table.Cursor()
 	if err != nil {
 		return response.NewSelectResponse(false, err.Error(), nil)
 	}
 	defer cursor.Close()
+
+	if stmt.Where != nil {
+		cursor, err = cursor.WithFilter(stmt.Where)
+		if err != nil {
+			return response.NewSelectResponse(false, err.Error(), nil)
+		}
+	}
 
 	cursor.Skip(int64(stmt.Offset))
 	if stmt.Limit > 0 {
@@ -64,9 +66,22 @@ func (e *DefaultExecutor) processSimpleSelect(ctx context.Context, stmt *stateme
 	return response.NewSelectResponse(true, "Select executed successfully", rows)
 }
 
+type aggState struct {
+	count int
+	sum   float64
+	max   *float64
+	min   *float64
+}
+
 func (e *DefaultExecutor) processAggregations(ctx context.Context, stmt *statement.SelectStatement, cursor storage.Cursor) response.Response {
-	groupMap := make(map[string][]map[string]interface{})
 	groupKeys := stmt.GroupBy
+
+	type groupData struct {
+		GroupVals map[string]interface{}
+		Aggs      map[string]*aggState
+	}
+
+	groups := make(map[string]*groupData)
 
 	for cursor.Next() {
 		select {
@@ -80,38 +95,84 @@ func (e *DefaultExecutor) processAggregations(ctx context.Context, stmt *stateme
 			return response.NewSelectResponse(false, err.Error(), nil)
 		}
 
-		groupKey := ""
-		for _, key := range groupKeys {
-			groupKey += fmt.Sprintf("%v|", row[key])
+		groupKeyParts := make([]string, len(groupKeys))
+		groupVals := make(map[string]interface{}, len(groupKeys))
+		for i, key := range groupKeys {
+			val := fmt.Sprintf("%v", row[key])
+			groupKeyParts[i] = val
+			groupVals[key] = row[key]
 		}
-		groupMap[groupKey] = append(groupMap[groupKey], row)
+		groupKey := strings.Join(groupKeyParts, "|")
+
+		if _, ok := groups[groupKey]; !ok {
+			groups[groupKey] = &groupData{
+				GroupVals: groupVals,
+				Aggs:      make(map[string]*aggState),
+			}
+		}
+
+		for _, agg := range stmt.Aggregations {
+			v, ok := toFloat64(row[agg.Column])
+			if !ok && agg.Function != "COUNT" {
+				continue
+			}
+
+			state := groups[groupKey].Aggs[agg.Alias]
+			if state == nil {
+				state = &aggState{}
+				groups[groupKey].Aggs[agg.Alias] = state
+			}
+
+			switch agg.Function {
+			case "COUNT":
+				state.count++
+			case "SUM", "AVG":
+				state.count++
+				state.sum += v
+			case "MAX":
+				if state.max == nil || v > *state.max {
+					state.max = &v
+				}
+			case "MIN":
+				if state.min == nil || v < *state.min {
+					state.min = &v
+				}
+			default:
+				return response.NewSelectResponse(false, "unsupported aggregation: "+agg.Function, nil)
+			}
+		}
 	}
 
 	var results []map[string]interface{}
 
-	for key, rows := range groupMap {
+	for _, group := range groups {
 		result := make(map[string]interface{})
 
-		// Set grouped fields
-		if len(groupKeys) > 0 {
-			values := strings.Split(key, "|")
-			for i, k := range groupKeys {
-				if i < len(values) {
-					result[k] = values[i]
-				}
-			}
+		for k, v := range group.GroupVals {
+			result[k] = v
 		}
 
-		// Compute aggregations
 		for _, agg := range stmt.Aggregations {
+			state := group.Aggs[agg.Alias]
 			switch agg.Function {
 			case "COUNT":
-				result[agg.Alias] = len(rows)
-			case "SUM", "AVG", "MAX", "MIN":
-				val := computeNumericAgg(rows, agg.Column, agg.Function)
-				result[agg.Alias] = val
-			default:
-				return response.NewSelectResponse(false, "unsupported aggregation: "+agg.Function, nil)
+				result[agg.Alias] = state.count
+			case "SUM":
+				result[agg.Alias] = state.sum
+			case "AVG":
+				if state.count == 0 {
+					result[agg.Alias] = nil
+				} else {
+					result[agg.Alias] = state.sum / float64(state.count)
+				}
+			case "MAX":
+				if state.max != nil {
+					result[agg.Alias] = *state.max
+				}
+			case "MIN":
+				if state.min != nil {
+					result[agg.Alias] = *state.min
+				}
 			}
 		}
 

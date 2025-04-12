@@ -1,30 +1,37 @@
 package columnstorage
 
-import "github.com/onnasoft/ZenithSQL/core/storage"
+import (
+	"fmt"
+
+	"github.com/onnasoft/ZenithSQL/core/storage"
+	"github.com/onnasoft/ZenithSQL/io/filters"
+	"github.com/onnasoft/ZenithSQL/io/statement"
+)
 
 type ColumnCursorFromIds struct {
-	reader *ColumnReader
-	ids    []int64
-	index  int
-	limit  int
-	skip   int
-	err    error
+	base  storage.Cursor
+	ids   []int64
+	index int
+	limit int
+	skip  int
+	err   error
 }
 
-func NewColumnCursorFromIds(reader *ColumnReader, ids []int64) *ColumnCursorFromIds {
+func newColumnCursorFromIds(cursor storage.Cursor, ids []int64) (*ColumnCursorFromIds, error) {
 	return &ColumnCursorFromIds{
-		reader: reader,
-		ids:    ids,
-		index:  -1,
-		limit:  -1, // -1 means no limit
-	}
+		base:  cursor,
+		ids:   ids,
+		index: -1,
+		limit: -1, // -1 means no limit
+	}, nil
 }
 
 func (c *ColumnCursorFromIds) ColumnsData() map[string]storage.ColumnData {
-	return c.reader.ColumnsData()
+	return c.base.ColumnsData()
 }
 
 func (c *ColumnCursorFromIds) Next() bool {
+	reader := c.base.Reader()
 	for {
 		c.index++
 		if c.index >= len(c.ids) {
@@ -37,7 +44,7 @@ func (c *ColumnCursorFromIds) Next() bool {
 			return false
 		}
 		id := c.ids[c.index]
-		c.err = c.reader.See(id)
+		c.err = reader.See(id)
 		return c.err == nil
 	}
 }
@@ -46,7 +53,8 @@ func (c *ColumnCursorFromIds) Scan(dest map[string]interface{}) error {
 	if c.err != nil {
 		return c.err
 	}
-	values := c.reader.Values()
+	reader := c.base.Reader()
+	values := reader.Values()
 	for k, v := range values {
 		dest[k] = v
 	}
@@ -54,11 +62,11 @@ func (c *ColumnCursorFromIds) Scan(dest map[string]interface{}) error {
 }
 
 func (c *ColumnCursorFromIds) ScanField(field string) (interface{}, error) {
-	return c.reader.GetValue(field)
+	return c.base.Reader().GetValue(field)
 }
 
 func (c *ColumnCursorFromIds) FastScanField(col storage.ColumnData, value interface{}) (bool, error) {
-	return c.reader.FastGetValue(col, value)
+	return c.base.Reader().FastGetValue(col, value)
 }
 
 func (c *ColumnCursorFromIds) Err() error {
@@ -66,7 +74,7 @@ func (c *ColumnCursorFromIds) Err() error {
 }
 
 func (c *ColumnCursorFromIds) Close() error {
-	return c.reader.Close()
+	return c.base.Reader().Close()
 }
 
 func (c *ColumnCursorFromIds) Count() (int64, error) {
@@ -92,5 +100,17 @@ func (c *ColumnCursorFromIds) Skip(offset int64) {
 }
 
 func (c *ColumnCursorFromIds) Reader() storage.Reader {
-	return c.reader
+	return c.base.Reader()
+}
+
+func (c *ColumnCursorFromIds) WithIDs(ids []int64) (storage.Cursor, error) {
+	return newColumnCursorFromIds(c, ids)
+}
+
+func (c *ColumnCursorFromIds) WithFilter(filter *filters.Filter) (storage.Cursor, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (c *ColumnCursorFromIds) WithAggregations(agg []statement.Aggregation) (storage.Cursor, error) {
+	return nil, fmt.Errorf("not implemented")
 }

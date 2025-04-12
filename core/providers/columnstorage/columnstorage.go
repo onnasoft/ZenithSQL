@@ -9,15 +9,14 @@ import (
 	"time"
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
-	"github.com/onnasoft/ZenithSQL/io/filters"
-	"github.com/onnasoft/ZenithSQL/model/types"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/sirupsen/logrus"
 )
 
 const statsFileName = "stats.bin"
 
 type ColumnStorage struct {
-	fields        storage.FieldsMeta
+	fields        fields.FieldsMeta
 	columns       map[string]*Column
 	BasePath      string
 	StatsFilePath string
@@ -29,7 +28,7 @@ type ColumnStorage struct {
 }
 
 type ColumnStorageConfig struct {
-	Fields        storage.FieldsMeta
+	Fields        fields.FieldsMeta
 	BasePath      string
 	StatsFilePath string
 	StorageStats  *storage.StorageStats
@@ -57,7 +56,7 @@ func (s *ColumnStorage) Initialize(ctx context.Context) error {
 
 	for i := 0; i < len(s.fields); i++ {
 		meta := s.fields[i]
-		dataType := types.NewDataType(meta.Type)
+		dataType := fields.NewDataType(meta.Type)
 		col, err := NewColumn(meta.Name, dataType, meta.Length, meta.Required, s.BasePath)
 		if err != nil {
 			return fmt.Errorf("failed to initialize column %s: %w", meta.Name, err)
@@ -89,7 +88,6 @@ func (s *ColumnStorage) Truncate() error {
 }
 
 func (s *ColumnStorage) Close() error {
-	fmt.Println("Closing column storage")
 	for _, col := range s.columns {
 		if err := col.Close(); err != nil {
 			s.Logger.WithError(err).Error("Failed to close column")
@@ -114,7 +112,7 @@ func (s *ColumnStorage) Compact(ctx context.Context) error {
 	return nil
 }
 
-func (s *ColumnStorage) CreateField(meta storage.FieldMeta, validators ...storage.Validator) error {
+func (s *ColumnStorage) CreateField(meta fields.FieldMeta, validators ...storage.Validator) error {
 	return nil
 }
 
@@ -122,15 +120,15 @@ func (s *ColumnStorage) DeleteField(name string) error {
 	return nil
 }
 
-func (s *ColumnStorage) GetFieldMeta(name string) (storage.FieldMeta, error) {
-	return storage.FieldMeta{}, nil
+func (s *ColumnStorage) GetFieldMeta(name string) (fields.FieldMeta, error) {
+	return fields.FieldMeta{}, nil
 }
 
-func (s *ColumnStorage) ListFields() ([]storage.FieldMeta, error) {
+func (s *ColumnStorage) ListFields() ([]fields.FieldMeta, error) {
 	return nil, nil
 }
 
-func (s *ColumnStorage) UpdateField(name string, newMeta storage.FieldMeta) error {
+func (s *ColumnStorage) UpdateField(name string, newMeta fields.FieldMeta) error {
 	return nil
 }
 
@@ -148,22 +146,6 @@ func (s *ColumnStorage) Cursor() (storage.Cursor, error) {
 		return nil, err
 	}
 	return NewColumnCursor(reader), nil
-}
-
-func (s *ColumnStorage) CursorFromIDs(ids []int64) (storage.Cursor, error) {
-	reader, err := NewColumnReader(s.columns, s.StorageStats)
-	if err != nil {
-		return nil, err
-	}
-	return NewColumnCursorFromIds(reader, ids), nil
-}
-
-func (s *ColumnStorage) CursorWithFilter(filter *filters.Filter) (storage.Cursor, error) {
-	reader, err := NewColumnReader(s.columns, s.StorageStats)
-	if err != nil {
-		return nil, err
-	}
-	return NewColumnCursorWithFilter(NewColumnCursor(reader), filter), nil
 }
 
 func (s *ColumnStorage) Lock() error {

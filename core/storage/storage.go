@@ -3,43 +3,12 @@ package storage
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
-	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
-
-	"github.com/onnasoft/ZenithSQL/io/filters"
-	"github.com/onnasoft/ZenithSQL/model/types"
 )
-
-type FieldMeta struct {
-	Name       string          `json:"name"`
-	Type       types.Types     `json:"type"`
-	Length     int             `json:"length"`
-	Required   bool            `json:"required,omitempty"`
-	Validators []ValidatorInfo `json:"validators,omitempty"`
-}
-
-type FieldsMeta []FieldMeta
-
-func (f FieldsMeta) String() string {
-	var results []string
-	for _, field := range f {
-		result := fmt.Sprintf("Name: %s, Type: %s, Length: %d, Required: %t", field.Name, field.Type, field.Length, field.Required)
-		results = append(results, result)
-	}
-
-	return fmt.Sprintf("[%s]", strings.Join(results, ", "))
-}
-
-type ValidatorInfo struct {
-	Type   string          `json:"type"`
-	Params json.RawMessage `json:"params"`
-}
 
 type Validator interface {
 	Validate(value interface{}) error
@@ -128,8 +97,6 @@ type Storage interface {
 	Writer() (Writer, error)
 	Reader() (Reader, error)
 	Cursor() (Cursor, error)
-	CursorFromIDs(ids []int64) (Cursor, error)
-	CursorWithFilter(filter *filters.Filter) (Cursor, error)
 
 	Lock() error
 	Unlock() error

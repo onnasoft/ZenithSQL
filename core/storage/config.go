@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/onnasoft/ZenithSQL/model/fields"
 )
 
 const (
@@ -13,8 +15,8 @@ const (
 )
 
 type TableConfig struct {
-	Fields []FieldMeta   `json:"fields"`
-	Stats  *StorageStats `json:"-"`
+	Fields []fields.FieldMeta `json:"fields"`
+	Stats  *StorageStats      `json:"-"`
 }
 
 type ConfigManager struct {

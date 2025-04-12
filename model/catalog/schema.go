@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
-	"github.com/onnasoft/ZenithSQL/model/types"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/sirupsen/logrus"
 )
 
@@ -86,34 +86,34 @@ func (s *Schema) GetTable(name string) (*Table, error) {
 }
 
 func (s *Schema) CreateTable(name string, config *storage.TableConfig) (*Table, error) {
-	fields := make([]storage.FieldMeta, 1, len(config.Fields)+1)
-	fields[0] = storage.FieldMeta{
+	c := make([]fields.FieldMeta, 1, len(config.Fields)+1)
+	c[0] = fields.FieldMeta{
 		Name:     "id",
-		Type:     types.Int64,
+		Type:     fields.Int64,
 		Required: true,
 		Length:   8,
 	}
-	fields = append(fields, config.Fields...)
-	fields = append(fields, storage.FieldMeta{
+	c = append(c, config.Fields...)
+	c = append(c, fields.FieldMeta{
 		Name:     "created_at",
-		Type:     types.Timestamp,
+		Type:     fields.Timestamp,
 		Required: true,
 		Length:   8,
 	})
-	fields = append(fields, storage.FieldMeta{
+	c = append(c, fields.FieldMeta{
 		Name:     "updated_at",
-		Type:     types.Timestamp,
+		Type:     fields.Timestamp,
 		Required: true,
 		Length:   8,
 	})
-	fields = append(fields, storage.FieldMeta{
+	c = append(c, fields.FieldMeta{
 		Name:     "deleted_at",
-		Type:     types.Timestamp,
+		Type:     fields.Timestamp,
 		Required: false,
 		Length:   8,
 	})
 
-	config.Fields = fields
+	config.Fields = c
 
 	if _, err := s.ConfigManager.LoadStats(name); err == nil {
 		return nil, fmt.Errorf("table %s already exists", name)

@@ -1,10 +1,12 @@
 package storage
 
-import "github.com/onnasoft/ZenithSQL/model/types"
+import (
+	"github.com/onnasoft/ZenithSQL/model/fields"
+)
 
 type ColumnData interface {
-	types.DataType
+	fields.DataType
 	Name() string
-	Type() types.DataType
+	Type() fields.DataType
 	String() string
 }

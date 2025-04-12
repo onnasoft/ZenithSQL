@@ -7,7 +7,7 @@ import (
 
 	"github.com/onnasoft/ZenithSQL/core/storage"
 	"github.com/onnasoft/ZenithSQL/model/catalog"
-	"github.com/onnasoft/ZenithSQL/model/types"
+	"github.com/onnasoft/ZenithSQL/model/fields"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,12 +31,12 @@ func main() {
 
 	// Crear nueva tabla
 	tableConfig := &storage.TableConfig{
-		Fields: []storage.FieldMeta{
+		Fields: []fields.FieldMeta{
 			{
 				Name:   "name",
-				Type:   types.String,
+				Type:   fields.String,
 				Length: 100,
-				Validators: []storage.ValidatorInfo{
+				Validators: []fields.ValidatorInfo{
 					{
 						Type:   "stringLength",
 						Params: json.RawMessage(`{"min": 1, "max": 100}`),
